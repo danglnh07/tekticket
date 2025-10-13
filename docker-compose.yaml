@@ -1,17 +1,32 @@
 services:
- directus:
-    image: directus/directus:11.12
-    ports:
-      - 8055:8055
-    environment:
-      SECRET: ${DIRECTUS_SECRET}
-      ADMIN_EMAIL: ${DIRECTUS_EMAIL}
-      ADMIN_PASSWORD: ${DIRECTUS_PASSWORD}
-      DB_CLIENT: pg
-      DB_HOST: ${DIRECTUS_DATABASE_HOST}
-      DB_PORT: 5432
-      DB_DATABASE: ${DIRECTUS_DATABASE}
-      DB_USER: ${DIRECTUS_DATABASE_USER}
-      DB_PASSWORD: ${DIRECTUS_DATABASE_PASSWORD}
-      DB_SSL: true
-      WEBSOCKETS_ENABLED: "true"
+    directus:
+        image: directus/directus:11.12
+        ports:
+            - 8055:8055
+        environment:
+            SECRET: ${DIRECTUS_SECRET}
+            ADMIN_EMAIL: ${DIRECTUS_EMAIL}
+            ADMIN_PASSWORD: ${DIRECTUS_PASSWORD}
+            DB_CLIENT: pg
+            DB_HOST: ${DIRECTUS_DATABASE_HOST}
+            DB_PORT: 5432
+            DB_DATABASE: ${DIRECTUS_DATABASE}
+            DB_USER: ${DIRECTUS_DATABASE_USER}
+            DB_PASSWORD: ${DIRECTUS_DATABASE_PASSWORD}
+            DB_SSL: true
+            WEBSOCKETS_ENABLED: "true"
+    redis:
+        image: redis:8.2-alpine3.22
+        ports:
+            - 6379:6379
+    app:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        ports:
+            - 8080:8080
+        env_file:
+            - .env
+        depends_on:
+            - directus
+            - redis
