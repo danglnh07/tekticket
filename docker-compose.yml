@@ -1,0 +1,23 @@
+version: "3.8"
+services:
+  directus:
+    image: directus/directus:latest
+    restart: unless-stopped
+    ports:
+      - "8055:8055"
+    env_file:
+      - .env
+    environment:
+      - DB_CLIENT=${DB_CLIENT}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_DATABASE=${DB_DATABASE}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_SSL=${DB_SSL}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      # Nếu dùng DATABASE_URL thay cho DB_* thì uncomment dòng dưới và remove DB_* tương ứng
+      # - DATABASE_URL=${DATABASE_URL}
+    volumes:
+      - ./directus_storage:/directus/uploads
