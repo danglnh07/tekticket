@@ -5,6 +5,7 @@ import (
 	"os"
 	"tekticket/api"
 	"tekticket/db"
+	"tekticket/service/mail"
 	"tekticket/service/security"
 	"tekticket/service/worker"
 	"tekticket/util"
@@ -43,12 +44,13 @@ func main() {
 	// Create dependencies for server
 	jwtService := security.NewJWTService(config.SecretKey, config.TokenExpiration, config.RefreshTokenExpiration)
 	distributor := worker.NewRedisTaskDistributor(asynq.RedisClientOpt{Addr: config.RedisAddr})
+	mailService := mail.NewEmailService(config.Email, config.AppPassword)
 
 	// Start the background server in separate goroutine (since it's will block the main thread)
-	go StartBackgroundProcessor(asynq.RedisClientOpt{Addr: config.RedisAddr}, queries)
+	go StartBackgroundProcessor(asynq.RedisClientOpt{Addr: config.RedisAddr}, queries, mailService)
 
 	// Start server
-	server := api.NewServer(queries, jwtService, distributor)
+	server := api.NewServer(queries, jwtService, distributor, mailService)
 	if err := server.Start(); err != nil {
 		util.LOGGER.Error("Failed to start server", "error", err)
 		os.Exit(1)
@@ -58,9 +60,10 @@ func main() {
 func StartBackgroundProcessor(
 	redisOpts asynq.RedisClientOpt,
 	queries *db.Queries,
+	mailService mail.MailService,
 ) error {
 	// Create the processor
-	processor := worker.NewRedisTaskProcessor(redisOpts, queries)
+	processor := worker.NewRedisTaskProcessor(redisOpts, queries, mailService)
 
 	// Start process tasks
 	return processor.Start()

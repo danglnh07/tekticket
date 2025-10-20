@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Welcome to Our Community</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family:
+                    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                    Oxygen, Ubuntu, Cantarell, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                padding: 20px;
+            }
+
+            .email-container {
+                max-width: 600px;
+                margin: 0 auto;
+                background: rgba(255, 255, 255, 0.95);
+                backdrop-filter: blur(10px);
+                border-radius: 20px;
+                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+                overflow: hidden;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }
+
+            .header {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                padding: 40px 30px;
+                text-align: center;
+                position: relative;
+                overflow: hidden;
+            }
+
+            .header::before {
+                content: "";
+                position: absolute;
+                top: -50%;
+                left: -50%;
+                width: 200%;
+                height: 200%;
+                background: radial-gradient(
+                    circle,
+                    rgba(255, 255, 255, 0.1) 0%,
+                    transparent 70%
+                );
+                animation: pulse 4s ease-in-out infinite;
+            }
+
+            @keyframes pulse {
+                0%,
+                100% {
+                    transform: scale(1) rotate(0deg);
+                    opacity: 0.3;
+                }
+                50% {
+                    transform: scale(1.1) rotate(180deg);
+                    opacity: 0.1;
+                }
+            }
+
+            .logo {
+                width: 80px;
+                height: 80px;
+                background: rgba(255, 255, 255, 0.2);
+                border-radius: 50%;
+                margin: 0 auto 20px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 32px;
+                font-weight: bold;
+                color: white;
+                position: relative;
+                z-index: 2;
+                backdrop-filter: blur(10px);
+                border: 2px solid rgba(255, 255, 255, 0.3);
+            }
+
+            .header h1 {
+                color: white;
+                font-size: 28px;
+                font-weight: 700;
+                margin-bottom: 10px;
+                position: relative;
+                z-index: 2;
+            }
+
+            .header p {
+                color: rgba(255, 255, 255, 0.9);
+                font-size: 16px;
+                position: relative;
+                z-index: 2;
+            }
+
+            .content {
+                padding: 40px 30px;
+            }
+
+            .greeting {
+                font-size: 24px;
+                font-weight: 600;
+                color: #2d3748;
+                margin-bottom: 20px;
+                background: linear-gradient(135deg, #667eea, #764ba2);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+
+            .message {
+                font-size: 16px;
+                color: #4a5568;
+                margin-bottom: 30px;
+                line-height: 1.7;
+            }
+
+            .cta-button {
+                display: inline-block;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                text-decoration: none;
+                padding: 16px 32px;
+                border-radius: 50px;
+                font-weight: 600;
+                font-size: 16px;
+                margin: 20px 0;
+                transition: all 0.3s ease;
+                box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+                position: relative;
+                overflow: hidden;
+            }
+
+            .cta-button::before {
+                content: "";
+                position: absolute;
+                top: 0;
+                left: -100%;
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(
+                    90deg,
+                    transparent,
+                    rgba(255, 255, 255, 0.2),
+                    transparent
+                );
+                transition: left 0.5s;
+            }
+
+            .cta-button:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 12px 30px rgba(102, 126, 234, 0.4);
+            }
+
+            .cta-button:hover::before {
+                left: 100%;
+            }
+
+            .features {
+                margin: 40px 0;
+            }
+
+            .feature-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                gap: 20px;
+                margin-top: 20px;
+            }
+
+            .feature-item {
+                background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+                padding: 25px;
+                border-radius: 15px;
+                text-align: center;
+                border: 1px solid rgba(255, 255, 255, 0.5);
+                transition:
+                    transform 0.3s ease,
+                    box-shadow 0.3s ease;
+            }
+
+            .feature-item:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            }
+
+            .feature-icon {
+                width: 50px;
+                height: 50px;
+                background: linear-gradient(135deg, #667eea, #764ba2);
+                border-radius: 50%;
+                margin: 0 auto 15px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 20px;
+                color: white;
+            }
+
+            .feature-title {
+                font-size: 16px;
+                font-weight: 600;
+                color: #2d3748;
+                margin-bottom: 8px;
+            }
+
+            .feature-desc {
+                font-size: 14px;
+                color: #718096;
+            }
+
+            .footer {
+                background: #f7fafc;
+                padding: 30px;
+                text-align: center;
+                border-top: 1px solid #e2e8f0;
+            }
+
+            .footer p {
+                font-size: 14px;
+                color: #718096;
+                margin-bottom: 15px;
+            }
+
+            .social-links {
+                margin: 20px 0;
+            }
+
+            .social-links a {
+                display: inline-block;
+                width: 40px;
+                height: 40px;
+                background: linear-gradient(135deg, #667eea, #764ba2);
+                color: white;
+                text-decoration: none;
+                border-radius: 50%;
+                margin: 0 5px;
+                line-height: 40px;
+                transition: transform 0.3s ease;
+            }
+
+            .social-links a:hover {
+                transform: scale(1.1);
+            }
+
+            .unsubscribe {
+                font-size: 12px;
+                color: #a0aec0;
+                margin-top: 20px;
+            }
+
+            .unsubscribe a {
+                color: #667eea;
+                text-decoration: none;
+            }
+
+            /* Mobile responsiveness */
+            @media (max-width: 600px) {
+                body {
+                    padding: 10px;
+                }
+
+                .email-container {
+                    border-radius: 15px;
+                }
+
+                .header {
+                    padding: 30px 20px;
+                }
+
+                .content {
+                    padding: 30px 20px;
+                }
+
+                .header h1 {
+                    font-size: 24px;
+                }
+
+                .greeting {
+                    font-size: 20px;
+                }
+
+                .feature-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="email-container">
+            <div class="header">
+                <div class="logo">✨</div>
+                <h1>Welcome Aboard, {{ .Username }}!</h1>
+                <p>You're now part of something amazing</p>
+            </div>
+
+            <div class="content">
+                <div class="greeting">Hey there, {{ .Username }}! 👋</div>
+
+                <p class="message">
+                    We're absolutely thrilled to welcome you to our community!
+                    You've just joined thousands of like-minded individuals who
+                    are passionate about creating, learning, and growing
+                    together.
+                </p>
+
+                <p class="message">
+                    Your journey starts now, and we're here to support you every
+                    step of the way. Whether you're looking to discover new
+                    features, connect with others, or achieve your goals, we've
+                    got everything you need.
+                </p>
+
+                <center>
+                    <p class="cta-button">{{.OTP}}</p>
+                </center>
+
+                <div class="features">
+                    <div class="feature-grid">
+                        <div class="feature-item">
+                            <div class="feature-icon">🚀</div>
+                            <div class="feature-title">Quick Setup</div>
+                            <div class="feature-desc">
+                                Get up and running in minutes with our intuitive
+                                onboarding process
+                            </div>
+                        </div>
+
+                        <div class="feature-item">
+                            <div class="feature-icon">💬</div>
+                            <div class="feature-title">24/7 Support</div>
+                            <div class="feature-desc">
+                                Our friendly team is always here to help you
+                                succeed
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="message">
+                    Ready to dive in? Click the button above to access your
+                    dashboard and start exploring all the amazing features we
+                    have in store for you.
+                </p>
+
+                <p class="message">
+                    <strong>Welcome to the family!</strong><br />
+                    The Team
+                </p>
+            </div>
+
+            <div class="footer">
+                <p>Follow us for updates and tips:</p>
+                <div class="social-links">
+                    <a href="#">📘</a>
+                    <a href="#">🐦</a>
+                    <a href="#">📷</a>
+                    <a href="#">💼</a>
+                </div>
+
+                <p>Questions? Reply to this email or visit our help center.</p>
+            </div>
+        </div>
+    </body>
+</html>

@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
+	"math/rand"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -46,3 +48,7 @@ func BcryptCompare(hashedStr, plainStr string) bool {
 	return err == nil
 }
 
+// Generate random OTP code (6 digits code)
+func GenerateRandomOTP() string {
+	return fmt.Sprintf("%d", rand.Intn(999999-100000+1)+100000)
+}
