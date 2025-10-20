@@ -1,0 +1,67 @@
+definitions:
+  api.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  api.RegisterRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+      phone:
+        type: string
+      role:
+        type: string
+      username:
+        type: string
+    required:
+    - email
+    - password
+    - phone
+    - role
+    - username
+    type: object
+  api.RegisterResponse:
+    properties:
+      message:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /api/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Creates a new user account with the provided username, email, phone, password, and role.
+        Sends a verification email to activate the account.
+      parameters:
+      - description: Registration request body
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Account created successfully, please activate your account
+            through the email we have sent
+          schema:
+            $ref: '#/definitions/api.RegisterResponse'
+        "400":
+          description: Invalid request body or existing username/email/phone
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to send verification email
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Register a new user account
+      tags:
+      - Auth
+swagger: "2.0"

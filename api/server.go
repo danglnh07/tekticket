@@ -3,10 +3,15 @@ package api
 import (
 	"net/http"
 	"tekticket/db"
+	_ "tekticket/docs"
+	"tekticket/service/mail"
 	"tekticket/service/security"
 	"tekticket/service/worker"
 
 	"github.com/gin-gonic/gin"
+
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 // Server struct, holds the router, dependencies, system config and logger
@@ -20,6 +25,7 @@ type Server struct {
 	// Dependencies
 	jwtService  *security.JWTService
 	distributor worker.TaskDistributor
+	mailService mail.MailService
 }
 
 // Constructor method for server struct
@@ -27,12 +33,14 @@ func NewServer(
 	queries *db.Queries,
 	jwtService *security.JWTService,
 	distributor worker.TaskDistributor,
+	mailService mail.MailService,
 ) *Server {
 	return &Server{
 		router:      gin.Default(),
 		queries:     queries,
 		jwtService:  jwtService,
 		distributor: distributor,
+		mailService: mailService,
 	}
 }
 
@@ -46,7 +54,15 @@ func (server *Server) RegisterHandler() {
 		api.GET("/", func(ctx *gin.Context) {
 			ctx.JSON(http.StatusOK, gin.H{"message": "Hello world"})
 		})
+
+		auth := api.Group("/auth")
+		{
+			auth.POST("/register", server.Register)
+		}
 	}
+
+	// Swagger docs
+	server.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }
 
 // Start server
