@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"tekticket/api"
 	"tekticket/db"
+	"tekticket/service/cloudinary"
 	"tekticket/service/security"
 	"tekticket/service/worker"
 	"tekticket/util"
@@ -53,6 +55,9 @@ func main() {
 		util.LOGGER.Error("Failed to start server", "error", err)
 		os.Exit(1)
 	}
+
+	url := cloudinary.UploadImage("https://s3-api.fpt.vn/fptvn-storage/2025-09-04/1756983257_thumbdragonball.jpg")
+	fmt.Println(url)
 }
 
 func StartBackgroundProcessor(
