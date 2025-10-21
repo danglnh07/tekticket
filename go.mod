@@ -3,6 +3,7 @@ module tekticket
 go 1.24.8
 
 require (
+	github.com/cloudinary/cloudinary-go/v2 v2.13.0
 	github.com/gin-gonic/gin v1.11.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
@@ -20,7 +21,6 @@ require (
 	github.com/bytedance/sonic v1.14.0 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cloudinary/cloudinary-go/v2 v2.13.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/creasty/defaults v1.8.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
