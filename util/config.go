@@ -17,6 +17,11 @@ type Config struct {
 	AppPassword            string
 	TokenExpiration        time.Duration
 	RefreshTokenExpiration time.Duration
+
+	// cloudinary
+	CloudName   string
+	CloudKey    string
+	CloudSecret string
 }
 
 func LoadConfig(path string) *Config {
@@ -30,6 +35,11 @@ func LoadConfig(path string) *Config {
 			AppPassword:            os.Getenv("APP_PASSWORD"),
 			TokenExpiration:        time.Minute * 60,
 			RefreshTokenExpiration: time.Minute * 1440,
+
+			// cloudinary
+			CloudName:   os.Getenv("CLOUDINARY_NAME"),
+			CloudKey:    os.Getenv("CLOUDINARY_APIKEY"),
+			CloudSecret: os.Getenv("CLOUDINARY_APISECRET"),
 		}
 	}
 
@@ -54,5 +64,10 @@ func LoadConfig(path string) *Config {
 		AppPassword:            os.Getenv("APP_PASSWORD"),
 		TokenExpiration:        time.Minute * time.Duration(tokenExpiration),
 		RefreshTokenExpiration: time.Minute * time.Duration(refreshTokenExpiration),
+		// cloudinary
+		CloudName:   os.Getenv("CLOUDINARY_NAME"),
+		CloudKey:    os.Getenv("CLOUDINARY_APIKEY"),
+		CloudSecret: os.Getenv("CLOUDINARY_APISECRET"),
 	}
+
 }

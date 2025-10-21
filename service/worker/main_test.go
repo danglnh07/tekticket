@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"os"
+	"strings"
 	"tekticket/db"
 	"tekticket/service/mail"
 	"tekticket/util"
@@ -19,7 +20,7 @@ var (
 
 func TestMain(m *testing.M) {
 	// This integration test shouldn't be run in CI to avoid spamming
-	if os.Getenv("CI") != "" {
+	if strings.TrimSpace(os.Getenv("CI")) != "" {
 		util.LOGGER.Warn("CI environment, skip integration test")
 		return
 	}

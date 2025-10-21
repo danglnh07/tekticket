@@ -5,6 +5,7 @@ import (
 	"os"
 	"tekticket/api"
 	"tekticket/db"
+	"tekticket/service/cloudinary"
 	"tekticket/service/mail"
 	"tekticket/service/security"
 	"tekticket/service/worker"
@@ -44,17 +45,23 @@ func main() {
 	// Create dependencies for server
 	jwtService := security.NewJWTService(config.SecretKey, config.TokenExpiration, config.RefreshTokenExpiration)
 	distributor := worker.NewRedisTaskDistributor(asynq.RedisClientOpt{Addr: config.RedisAddr})
+	cld, err := cloudinary.NewCld(config.CloudName, config.CloudKey, config.CloudSecret)
+	if err != nil {
+		util.LOGGER.Error("failed to initialize Cloudinary service", "error", err)
+		os.Exit(1)
+	}
 	mailService := mail.NewEmailService(config.Email, config.AppPassword)
 
 	// Start the background server in separate goroutine (since it's will block the main thread)
 	go StartBackgroundProcessor(asynq.RedisClientOpt{Addr: config.RedisAddr}, queries, mailService)
 
 	// Start server
-	server := api.NewServer(queries, jwtService, distributor, mailService)
+	server := api.NewServer(queries, jwtService, distributor, mailService, cld)
 	if err := server.Start(); err != nil {
 		util.LOGGER.Error("Failed to start server", "error", err)
 		os.Exit(1)
 	}
+
 }
 
 func StartBackgroundProcessor(
