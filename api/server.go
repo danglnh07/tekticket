@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"tekticket/db"
+	"tekticket/service/cloudinary"
 	"tekticket/service/security"
 	"tekticket/service/worker"
 
@@ -18,8 +19,9 @@ type Server struct {
 	queries *db.Queries
 
 	// Dependencies
-	jwtService  *security.JWTService
-	distributor worker.TaskDistributor
+	jwtService    *security.JWTService
+	distributor   worker.TaskDistributor
+	uploadService *cloudinary.CloudinaryService
 }
 
 // Constructor method for server struct
@@ -27,12 +29,14 @@ func NewServer(
 	queries *db.Queries,
 	jwtService *security.JWTService,
 	distributor worker.TaskDistributor,
+	uploadService *cloudinary.CloudinaryService,
 ) *Server {
 	return &Server{
-		router:      gin.Default(),
-		queries:     queries,
-		jwtService:  jwtService,
-		distributor: distributor,
+		router:        gin.Default(),
+		queries:       queries,
+		jwtService:    jwtService,
+		distributor:   distributor,
+		uploadService: uploadService,
 	}
 }
 

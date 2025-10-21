@@ -9,10 +9,12 @@ import (
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
 )
 
+// Cloudinary service
 type CloudinaryService struct {
 	cld *cloudinary.Cloudinary
 }
 
+// Constuctor for cloudinary service
 func NewCld(cloudName, cloudKey, cloudSecret string) (*CloudinaryService, error) {
 	cld, err := cloudinary.NewFromURL("cloudinary://" + cloudKey + ":" + cloudSecret + "@" + cloudName)
 	if err != nil {
@@ -21,6 +23,7 @@ func NewCld(cloudName, cloudKey, cloudSecret string) (*CloudinaryService, error)
 	return &CloudinaryService{cld: cld}, nil
 }
 
+// Upload image into cloud service
 func (cld *CloudinaryService) UploadImage(url string) (string, error) {
 
 	filename := path.Base(url)
