@@ -2,6 +2,7 @@ package security
 
 import (
 	"fmt"
+	"tekticket/db"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -29,6 +30,7 @@ const (
 // Custom claim definition
 type CustomClaims struct {
 	ID                   uuid.UUID `json:"id"` // UserID
+	Role                 db.Role   `json:"role"`
 	TokenType            TokenType `json:"token_type"`
 	Version              int       `json:"version"`
 	jwt.RegisteredClaims           // Embed the JWT Registered claims
@@ -44,7 +46,7 @@ func NewJWTService(secretKey []byte, tokenExpiration, refreshTokenExpiration tim
 }
 
 // Create token
-func (service *JWTService) CreateToken(id uuid.UUID, tokenType TokenType, version int) (string, error) {
+func (service *JWTService) CreateToken(id uuid.UUID, role db.Role, tokenType TokenType, version int) (string, error) {
 	// Check token type and decide expiration time based on type
 	var expiration time.Duration
 	switch tokenType {
@@ -59,6 +61,7 @@ func (service *JWTService) CreateToken(id uuid.UUID, tokenType TokenType, versio
 	// Create custom JWT claim
 	claims := CustomClaims{
 		ID:        id,
+		Role:      role,
 		TokenType: tokenType,
 		Version:   version,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -116,6 +119,10 @@ func (service *JWTService) VerifyToken(signedToken string) (*CustomClaims, error
 		return nil, fmt.Errorf("invalid token type: %s", claims.TokenType)
 	}
 
+	// Check if role is of those defined in the system
+	if claims.Role != db.Customer && claims.Role != db.Organiser && claims.Role != db.Staff && claims.Role != db.Admin {
+		return nil, fmt.Errorf("invalid user role: %s", claims.Role)
+	}
+
 	return claims, nil
 }
-

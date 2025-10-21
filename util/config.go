@@ -13,6 +13,8 @@ type Config struct {
 	DbConn                 string
 	RedisAddr              string
 	SecretKey              []byte
+	Email                  string
+	AppPassword            string
 	TokenExpiration        time.Duration
 	RefreshTokenExpiration time.Duration
 
@@ -29,6 +31,8 @@ func LoadConfig(path string) *Config {
 			DbConn:                 os.Getenv("DB_CONN"),
 			RedisAddr:              os.Getenv("REDIS_ADDR"),
 			SecretKey:              []byte(os.Getenv("SECRET_KEY")),
+			Email:                  os.Getenv("EMAIL"),
+			AppPassword:            os.Getenv("APP_PASSWORD"),
 			TokenExpiration:        time.Minute * 60,
 			RefreshTokenExpiration: time.Minute * 1440,
 
@@ -56,6 +60,8 @@ func LoadConfig(path string) *Config {
 		DbConn:                 os.Getenv("DB_CONN"),
 		RedisAddr:              os.Getenv("REDIS_ADDR"),
 		SecretKey:              []byte(os.Getenv("SECRET_KEY")),
+		Email:                  os.Getenv("EMAIL"),
+		AppPassword:            os.Getenv("APP_PASSWORD"),
 		TokenExpiration:        time.Minute * time.Duration(tokenExpiration),
 		RefreshTokenExpiration: time.Minute * time.Duration(refreshTokenExpiration),
 		// cloudinary

@@ -3,11 +3,17 @@ package api
 import (
 	"net/http"
 	"tekticket/db"
+	_ "tekticket/docs"
 	"tekticket/service/cloudinary"
+	"tekticket/service/mail"
 	"tekticket/service/security"
 	"tekticket/service/worker"
+	"tekticket/util"
 
 	"github.com/gin-gonic/gin"
+
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 // Server struct, holds the router, dependencies, system config and logger
@@ -22,6 +28,7 @@ type Server struct {
 	jwtService    *security.JWTService
 	distributor   worker.TaskDistributor
 	uploadService *cloudinary.CloudinaryService
+	mailService   mail.MailService
 }
 
 // Constructor method for server struct
@@ -29,6 +36,7 @@ func NewServer(
 	queries *db.Queries,
 	jwtService *security.JWTService,
 	distributor worker.TaskDistributor,
+	mailService mail.MailService,
 	uploadService *cloudinary.CloudinaryService,
 ) *Server {
 	return &Server{
@@ -37,6 +45,7 @@ func NewServer(
 		jwtService:    jwtService,
 		distributor:   distributor,
 		uploadService: uploadService,
+		mailService:   mailService,
 	}
 }
 
@@ -50,16 +59,33 @@ func (server *Server) RegisterHandler() {
 		api.GET("/", func(ctx *gin.Context) {
 			ctx.JSON(http.StatusOK, gin.H{"message": "Hello world"})
 		})
+
+		auth := api.Group("/auth")
+		{
+			auth.POST("/register", server.Register)
+			auth.POST("/verify/:id", server.VerifyAccount)
+			auth.POST("/resend-otp/:id", server.ResendOTP)
+			auth.POST("/login", server.Login)
+		}
 	}
+
+	// Swagger docs
+	server.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }
 
 // Start server
 func (server *Server) Start() error {
 	server.RegisterHandler()
+	util.LOGGER.Info("Server running. Visit API document at: http://localhost:8080/swagger/index.html")
 	return server.router.Run(":8080")
 }
 
 // Error response struct
 type ErrorResponse struct {
 	Message string `json:"error"`
+}
+
+// String message
+type SuccessMessage struct {
+	Message string `json:"message"`
 }
