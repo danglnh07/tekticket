@@ -2,6 +2,7 @@ package security
 
 import (
 	"math/rand"
+	"tekticket/db"
 	"testing"
 
 	"github.com/google/uuid"
@@ -15,7 +16,7 @@ func TestToken(t *testing.T) {
 	version := rand.Intn(10)
 
 	// Create token
-	token, err := service.CreateToken(id, tokenType, version)
+	token, err := service.CreateToken(id, db.Customer, tokenType, version)
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 
