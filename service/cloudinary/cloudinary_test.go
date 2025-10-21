@@ -2,6 +2,7 @@ package cloudinary
 
 import (
 	"os"
+	"strings"
 	"tekticket/util"
 	"testing"
 
@@ -15,7 +16,7 @@ var (
 
 func TestMain(m *testing.M) {
 	// Omit test if this is CI environment
-	if os.Getenv("CI") != "" {
+	if strings.TrimSpace(os.Getenv("CI")) != "" {
 		util.LOGGER.Warn("CI environment, skip integration test")
 		return
 	}
