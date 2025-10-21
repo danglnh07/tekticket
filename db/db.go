@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -55,6 +54,14 @@ func (queries *Queries) SetCache(ctx context.Context, key string, val string, ex
 	queries.Cache.Set(ctx, key, val, expired)
 }
 
+type ErrorCacheMiss struct {
+	Message string
+}
+
+func (e *ErrorCacheMiss) Error() string {
+	return "cache miss"
+}
+
 // Get cache value
 func (queries *Queries) GetCache(ctx context.Context, key string) (string, error) {
 	val, err := queries.Cache.Get(ctx, key).Result()
@@ -70,5 +77,5 @@ func (queries *Queries) GetCache(ctx context.Context, key string) (string, error
 	}
 
 	// If the value of the key simply don't exists, or expired
-	return "", fmt.Errorf("cache miss")
+	return "", &ErrorCacheMiss{Message: "cache miss"}
 }

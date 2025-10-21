@@ -7,6 +7,7 @@ import (
 	"tekticket/service/mail"
 	"tekticket/service/security"
 	"tekticket/service/worker"
+	"tekticket/util"
 
 	"github.com/gin-gonic/gin"
 
@@ -58,6 +59,9 @@ func (server *Server) RegisterHandler() {
 		auth := api.Group("/auth")
 		{
 			auth.POST("/register", server.Register)
+			auth.POST("/verify/:id", server.VerifyAccount)
+			auth.POST("/resend-otp/:id", server.ResendOTP)
+			auth.POST("/login", server.Login)
 		}
 	}
 
@@ -68,10 +72,16 @@ func (server *Server) RegisterHandler() {
 // Start server
 func (server *Server) Start() error {
 	server.RegisterHandler()
+	util.LOGGER.Info("Server running. Visit API document at: http://localhost:8080/swagger/index.html")
 	return server.router.Run(":8080")
 }
 
 // Error response struct
 type ErrorResponse struct {
 	Message string `json:"error"`
+}
+
+// String message
+type SuccessMessage struct {
+	Message string `json:"message"`
 }

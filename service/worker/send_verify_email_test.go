@@ -11,11 +11,6 @@ import (
 )
 
 func TestSendVerifyEmail(t *testing.T) {
-	// This integration test shouldn't be run in CI to avoid spamming
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping email integration test in CI")
-	}
-
 	// Send email
 	id, err := uuid.NewUUID()
 	require.NoError(t, err)

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"html/template"
+	"tekticket/db"
 	"tekticket/service/security"
 	"time"
 
@@ -24,26 +26,21 @@ const SendVerifyEmail = "send-verify-email"
 //go:embed verify_email.html
 var fs embed.FS
 
-func (processor *RedisTaskProcessor) SendVerifyEmail(pl any) error {
-	// Check if the payload type is correct
-	payload, ok := pl.(SendVerifyEmailPayload)
-	if !ok {
-		return fmt.Errorf("invalid payload type for this task")
-	}
-
+func (processor *RedisTaskProcessor) SendVerifyEmail(payload SendVerifyEmailPayload) error {
 	// Generate OTP
 	otp := security.GenerateRandomOTP()
 	payload.OTP = otp
 
 	// Check if the OTP already registered to avoid collisions
-	ok = false
+	ok := false
+	var cacheMiss *db.ErrorCacheMiss
 	for !ok {
 		res, err := processor.queries.GetCache(context.Background(), otp)
-		if err != nil && err.Error() != "cache miss" {
+		if err != nil && !errors.As(err, &cacheMiss) {
 			return fmt.Errorf("failed to check if OTP exists in cache: %v", err)
 		}
 
-		// If cache miss
+		// Check if cache miss
 		if res != "" {
 			otp = security.GenerateRandomOTP()
 		} else {
@@ -68,7 +65,8 @@ func (processor *RedisTaskProcessor) SendVerifyEmail(pl any) error {
 	}
 
 	// Register OTP into cache
-	processor.queries.SetCache(context.Background(), payload.ID.String(), otp, time.Second*60)
+	// Although the OTP should expired in 30 seconds, we add some time for latency
+	processor.queries.SetCache(context.Background(), otp, payload.ID.String(), time.Second*45)
 
 	return nil
 }

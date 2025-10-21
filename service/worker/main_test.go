@@ -18,6 +18,12 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	// This integration test shouldn't be run in CI to avoid spamming
+	if os.Getenv("CI") != "" {
+		util.LOGGER.Warn("CI environment, skip integration test")
+		return
+	}
+
 	queries := db.NewQueries()
 	err := queries.ConnectRedis(ctx, &redis.Options{
 		Addr: os.Getenv("REDIS_ADDR"),

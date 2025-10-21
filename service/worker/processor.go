@@ -2,8 +2,10 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"tekticket/db"
 	"tekticket/service/mail"
+	"tekticket/util"
 
 	"github.com/hibiken/asynq"
 )
@@ -44,7 +46,15 @@ func (processor *RedisTaskProcessor) Start() error {
 
 	// Setup handler
 	mux.HandleFunc(SendVerifyEmail, func(ctx context.Context, t *asynq.Task) error {
-		return processor.SendVerifyEmail(t.Payload())
+		// Unmarshal payload
+		var payload SendVerifyEmailPayload
+		if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+			return err
+		}
+
+		err := processor.SendVerifyEmail(payload)
+		util.LOGGER.Error("failed to process task", "task", SendVerifyEmail, "error", err)
+		return err
 	})
 
 	return processor.server.Start(mux)

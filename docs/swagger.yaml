@@ -4,6 +4,36 @@ definitions:
       error:
         type: string
     type: object
+  api.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - username
+    type: object
+  api.LoginResponse:
+    properties:
+      access_token:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      membership:
+        type: string
+      phone:
+        type: string
+      refresh_token:
+        type: string
+      role:
+        type: string
+      total_points:
+        type: integer
+      username:
+        type: string
+    type: object
   api.RegisterRequest:
     properties:
       email:
@@ -25,12 +55,52 @@ definitions:
     type: object
   api.RegisterResponse:
     properties:
+      id:
+        type: string
+    type: object
+  api.SuccessMessage:
+    properties:
       message:
         type: string
     type: object
 info:
   contact: {}
 paths:
+  /api/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate user with username and password. Returns access and
+        refresh JWT tokens.
+      parameters:
+      - description: Login request body (username, password)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successful login with access and refresh tokens
+          schema:
+            $ref: '#/definitions/api.LoginResponse'
+        "400":
+          description: Invalid request body or incorrect credentials
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "403":
+          description: Account not active, cannot login
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: User login
+      tags:
+      - Auth
   /api/auth/register:
     post:
       consumes:
@@ -49,8 +119,7 @@ paths:
       - application/json
       responses:
         "201":
-          description: Account created successfully, please activate your account
-            through the email we have sent
+          description: Create account success with status inactive
           schema:
             $ref: '#/definitions/api.RegisterResponse'
         "400":
@@ -62,6 +131,72 @@ paths:
           schema:
             $ref: '#/definitions/api.ErrorResponse'
       summary: Register a new user account
+      tags:
+      - Auth
+  /api/auth/resend-otp/{id}:
+    post:
+      consumes:
+      - application/json
+      description: Resends a new OTP code to the user's registered email address if
+        the account is still inactive.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OTP resent successfully
+          schema:
+            $ref: '#/definitions/api.SuccessMessage'
+        "400":
+          description: Invalid ID or account not inactive
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Resend account verification OTP
+      tags:
+      - Auth
+  /api/auth/verify/{id}:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Verifies a user's account using the provided OTP code sent to their email.
+        Once verified, the user's account status is set to active.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 6-digit OTP verification code
+        in: query
+        name: otp
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Verify account successfully, please login
+          schema:
+            $ref: '#/definitions/api.SuccessMessage'
+        "400":
+          description: Invalid OTP, expired code, or ID mismatch
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Verify user account
       tags:
       - Auth
 swagger: "2.0"

@@ -9,9 +9,18 @@ import (
 
 // Share fields of all models: ID, create at and updated at timestamp
 type Model struct {
-	ID        uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	CreatedAt time.Time `gorm:"not null;default:now()" json:"created_at"`
-	UpdatedAt time.Time `gorm:"not null;default:now()" json:"updated_at"`
+	// ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id,omitempty"`
+	ID          uuid.UUID `gorm:"type:uuid;not null;default:gen_random_uuid();primaryKey" json:"id"`
+	DateCreated time.Time `gorm:"not null;default:now()" json:"created_at"`
+	DateUpdated time.Time `gorm:"not null;default:now()" json:"updated_at"`
+}
+
+func NewModel() Model {
+	return Model{
+		ID:          uuid.New(),
+		DateCreated: time.Now(),
+		DateUpdated: time.Now(),
+	}
 }
 
 // Enum defined
@@ -139,7 +148,7 @@ type UserMembershipLog struct {
 	CustomerID       uuid.UUID  `gorm:"type:uuid;not null;index" json:"customer_id"`
 	ChangeType       string     `gorm:"type:varchar(20);not null" json:"change_type"` // earn, spend, adjust
 	PointsDelta      int        `gorm:"not null" json:"points_delta"`
-	ResultingPoints  int        `gorm:"not null" json:"resulting_points"`
+	ResultingPoints  uint       `gorm:"not null" json:"resulting_points"`
 	RelatedPaymentID *uuid.UUID `gorm:"type:uuid;index" json:"related_payment_id,omitempty"`
 	OperatorID       *uuid.UUID `gorm:"type:uuid;index" json:"operator_id,omitempty"` // Can be null
 	Reason           string     `gorm:"type:varchar(100)" json:"reason"`
