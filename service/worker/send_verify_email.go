@@ -8,14 +8,12 @@ import (
 	"fmt"
 	"html/template"
 	"tekticket/db"
-	"tekticket/service/security"
+	"tekticket/util"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type SendVerifyEmailPayload struct {
-	ID       uuid.UUID
+	ID       string `json:"id"`
 	Email    string `json:"email"`
 	Username string `json:"username"`
 	OTP      string `json:"otp"`
@@ -28,7 +26,7 @@ var fs embed.FS
 
 func (processor *RedisTaskProcessor) SendVerifyEmail(payload SendVerifyEmailPayload) error {
 	// Generate OTP
-	otp := security.GenerateRandomOTP()
+	otp := util.GenerateRandomOTP()
 	payload.OTP = otp
 
 	// Check if the OTP already registered to avoid collisions
@@ -42,7 +40,7 @@ func (processor *RedisTaskProcessor) SendVerifyEmail(payload SendVerifyEmailPayl
 
 		// Check if cache miss
 		if res != "" {
-			otp = security.GenerateRandomOTP()
+			otp = util.GenerateRandomOTP()
 		} else {
 			ok = true
 		}
@@ -66,7 +64,7 @@ func (processor *RedisTaskProcessor) SendVerifyEmail(payload SendVerifyEmailPayl
 
 	// Register OTP into cache
 	// Although the OTP should expired in 30 seconds, we add some time for latency
-	processor.queries.SetCache(context.Background(), otp, payload.ID.String(), time.Second*45)
+	processor.queries.SetCache(context.Background(), otp, payload.ID, time.Second*45)
 
 	return nil
 }

@@ -1,32 +1,34 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
-	"math"
+	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 	"tekticket/db"
-	"tekticket/service/security"
 	"tekticket/service/worker"
 	"tekticket/util"
 
 	"github.com/gin-gonic/gin"
-	// "github.com/google/uuid"
 	"github.com/hibiken/asynq"
-	"gorm.io/gorm"
 )
 
 type RegisterRequest struct {
-	Username string `json:"username" binding:"required"`
-	Email    string `json:"email" binding:"required,email"`
-	Phone    string `json:"phone" binding:"required"`
-	Password string `json:"password" binding:"required"`
-	Role     string `json:"role" binding:"required"`
+	Firstname string `json:"firstname" binding:"required"`
+	Lastname  string `json:"lastname" binding:"required"`
+	Email     string `json:"email" binding:"required,email"`
+	Password  string `json:"password" binding:"required"`
+	Role      string `json:"role" binding:"required"`
 }
 
 type RegisterResponse struct {
-	ID string `json:"id"`
+	ID        string `json:"id"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Email     string `json:"email"`
+	Status    string `json:"status"`
+	Role      string `json:"role"`
 }
 
 // Register godoc
@@ -45,79 +47,89 @@ func (server *Server) Register(ctx *gin.Context) {
 	// Get request body and validate
 	var req RegisterRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		util.LOGGER.Warn("POST /api/auth/register: failed to parse request body", "error", err)
 		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid request body"})
 		return
 	}
 
-	// Check if role is valid
-	role := db.Role(req.Role)
-	if role != db.Admin && role != db.Customer && role != db.Organiser && role != db.Staff {
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid value for role!"})
+	// Check roles
+	roles, err := server.queries.Client.Roles.List(ctx)
+	if err != nil {
+		util.LOGGER.Error("POST /api/auth/register: failed to get list of roles", "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
 
-	// Check if this username, email and phone exists
-	var account db.User
-	result := server.queries.DB.
-		Where("username = ? OR email = ? OR phone = ?", req.Username, req.Email, req.Phone).
-		First(&account)
-	if result.Error == nil {
-		// If username, email or phone exists
-		resp := ErrorResponse{}
-		if req.Email == account.Email {
-			resp.Message = "This email has been registered. Please login instead"
-		} else if req.Username == account.Username {
-			resp.Message = "This username has been taken"
-		} else if req.Phone == account.Phone {
-			resp.Message = "This phone has been registered."
+	roleID := ""
+	for _, role := range roles {
+		if strings.EqualFold(role.Name, req.Role) {
+			roleID = role.ID
 		}
+	}
 
-		ctx.JSON(http.StatusBadRequest, resp)
-		return
-	} else if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		util.LOGGER.Error("POST /api/auth/register: failed to get user data", "error", result.Error)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+	if roleID == "" {
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid role"})
 		return
 	}
 
-	// Hash password
-	hashed, err := security.BcryptHash(req.Password)
+	// Check if this email has been register
+	users, err := server.queries.Client.Users.List(ctx)
 	if err != nil {
-		util.LOGGER.Error("POST /api/auth/register: failed to user password", "error", err)
+		util.LOGGER.Error("POST /api/auth/register: failed to get list of users", "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
 
-	// Insert into database
-	account.Model = db.NewModel()
-	account.Username = req.Username
-	account.Email = req.Email
-	account.Phone = req.Phone
-	account.Password = hashed
-	account.Role = role
-	account.Status = db.Inactive
-	result = server.queries.DB.Create(&account)
-	if result.Error != nil {
-		util.LOGGER.Error("POST /api/auth/register: failed to create new account", "error", result.Error)
+	for _, user := range users {
+		// Only same email for different role
+		if user.Email == req.Email && (roleID == user.Role || strings.EqualFold(user.Role, req.Role)) {
+			ctx.JSON(http.StatusBadRequest, ErrorResponse{"This email already registered"})
+			return
+		}
+	}
+
+	// Make request to directus server
+	body := map[string]any{
+		"first_name": req.Firstname,
+		"last_name":  req.Lastname,
+		"email":      req.Email,
+		"password":   req.Password,
+		"role":       roleID,
+		"status":     "inactive",
+	}
+
+	resp, err := util.MakeRequest("POST", "users", body, server.config)
+	if err != nil {
+		util.LOGGER.Error("POST /api/auth/register: failed to make API request to Directus", "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
 
-	// Create background task: send verification email to client's email
+	// Parse response
+	var directusResp struct {
+		Data RegisterResponse `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
+		util.LOGGER.Error("POST /api/auth/register: failed to decode Directus response", "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		return
+	}
+
+	// Create background task: send verify email
 	err = server.distributor.DistributeTask(ctx, worker.SendVerifyEmail, worker.SendVerifyEmailPayload{
-		ID:       account.ID,
-		Email:    account.Email,
-		Username: account.Username,
+		ID:       directusResp.Data.ID,
+		Email:    directusResp.Data.Email,
+		Username: fmt.Sprintf("%s %s", directusResp.Data.FirstName, directusResp.Data.LastName),
 	}, asynq.MaxRetry(5))
+
 	if err != nil {
-		util.LOGGER.Error("POST /api/auth/register: failed to distribute send verification mail task", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Account created successfully, but failed to send verification email"})
+		util.LOGGER.Error("POST /api/auth/register: failed to distribute task", "task", worker.SendVerifyEmail, "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
 
-	// Return result back to client
-	ctx.JSON(http.StatusCreated, RegisterResponse{ID: account.ID.String()})
+	// return result back to client
+	ctx.JSON(http.StatusOK, directusResp.Data)
 }
 
 // VerifyAccount godoc
@@ -162,23 +174,15 @@ func (server *Server) VerifyAccount(ctx *gin.Context) {
 		return
 	}
 
-	// Update account status
-	result := server.queries.DB.Table("users").Where("id = ?", id).Update("status", db.Active)
-	if result.Error != nil {
-		// If ID not match any record
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusBadRequest, ErrorResponse{"Account with this ID not exists in database"})
-			return
-		}
-
-		// Other database error
-		util.LOGGER.Error("GET /api/auth/verify: failed to update account status", "error", result.Error)
+	// Update status
+	_, err = util.MakeRequest("PATCH", "users/"+id, map[string]any{"status": "active"}, server.config)
+	if err != nil {
+		util.LOGGER.Error("POST /api/auth/verify: failed to update account status", "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
 
-	// Return result to client
-	ctx.JSON(http.StatusOK, SuccessMessage{"Verify account successfully, please login"})
+	ctx.JSON(http.StatusOK, SuccessMessage{"Validate success"})
 }
 
 // ResendOTP godoc
@@ -192,60 +196,43 @@ func (server *Server) VerifyAccount(ctx *gin.Context) {
 // @Failure      400  {object}  ErrorResponse   "Invalid ID or account not inactive"
 // @Failure      500  {object}  ErrorResponse   "Internal server error"
 // @Router       /api/auth/resend-otp/{id} [post]
-func (server *Server) ResendOTP(ctx *gin.Context) {
+func (server *Server) SendOTP(ctx *gin.Context) {
 	// Get ID from path parameter
 	id := ctx.Param("id")
 
-	// Check if ID is valid and account status is inactive
-	var user db.User
-	result := server.queries.DB.Where("id = ?", id).First(&user)
-	if result.Error != nil {
-		// If ID not match any record
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusBadRequest, ErrorResponse{"No account with this ID"})
-			return
-		}
-
-		// Other database error
-		util.LOGGER.Error("POST /api/auth/resend-otp: failed to get user data", "error", result.Error)
+	// Check if this user exists
+	user, err := server.queries.Client.Users.Get(ctx, id)
+	if err != nil {
+		util.LOGGER.Error("POST /api/auth/send-otp: failed to get user by ID", "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
-		return
-	}
-
-	if user.Status != db.Inactive {
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"account status is not 'inactive', cannot proceed with request"})
 		return
 	}
 
 	// Create background job, send OTP
-	err := server.distributor.DistributeTask(ctx, worker.SendVerifyEmail, worker.SendVerifyEmailPayload{
-		ID:       user.ID,
+	err = server.distributor.DistributeTask(ctx, worker.SendVerifyEmail, worker.SendVerifyEmailPayload{
+		ID:       id,
 		Email:    user.Email,
-		Username: user.Username,
+		Username: fmt.Sprintf("%s %s", user.FirstName, user.LastName),
 	}, asynq.MaxRetry(5))
 
 	if err != nil {
-		util.LOGGER.Error("POST /api/auth/resend-otp: failed to distribute task", "task", worker.SendVerifyEmail, "error", err)
+		util.LOGGER.Error("POST /api/auth/send-otp: failed to distribute task", "task", worker.SendVerifyEmail, "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
+
+	ctx.JSON(http.StatusOK, SuccessMessage{"OTP resend successfully"})
 }
 
 type LoginRequest struct {
-	Username string `json:"username" binding:"required"`
+	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
 }
 
 type LoginResponse struct {
-	ID           string `json:"id"`
-	Username     string `json:"username"`
-	Email        string `json:"email"`
-	Phone        string `json:"phone"`
-	Role         string `json:"role"`
-	TotalPoints  uint   `json:"total_points"`
-	Membership   string `json:"membership"`
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
+	Expires      int    `json:"expires"`
 }
 
 // Login godoc
@@ -261,120 +248,97 @@ type LoginResponse struct {
 // @Failure      500  {object}  ErrorResponse  "Internal server error"
 // @Router       /api/auth/login [post]
 func (server *Server) Login(ctx *gin.Context) {
-	// Get and validate request body
+	// Get request body
 	var req LoginRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		util.LOGGER.Warn("POST /api/auth/login: failed to parse request body", "error", err)
 		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid request body"})
 		return
 	}
 
-	// Get user by username
-	var user db.User
-	result := server.queries.DB.Where("username = ?", req.Username).First(&user)
-	if result.Error != nil {
-		// If username not match
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusBadRequest, ErrorResponse{"Incorrect login credential"})
-			return
-		}
+	// Call login request to Directus
+	resp, err := util.MakeRequest("POST", "auth/login", map[string]any{
+		"email":    req.Email,
+		"password": req.Password,
+	}, server.config)
 
-		// Other database error
-		util.LOGGER.Error("POST /api/auth/login: failed to get user by username", "error", result.Error)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
-		return
-	}
-
-	// Check if user status is active
-	if user.Status != db.Active {
-		ctx.JSON(http.StatusForbidden, ErrorResponse{"Account not active, cannot login"})
-		return
-	}
-
-	// Check password
-	if !security.BcryptCompare(user.Password, req.Password) {
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Incorrect login credential"})
-		return
-	}
-
-	var resp = LoginResponse{
-		ID:       user.ID.String(),
-		Username: user.Username,
-		Email:    user.Email,
-		Phone:    user.Phone,
-		Role:     string(user.Role),
-	}
-
-	// Find the current user point (which is the latest point of the logs) and their corresponding rank
-	// Only apply to customer
-	if user.Role == db.Customer {
-		// Get latest log in database -> current user's point
-		var latestLog db.UserMembershipLog
-		result = server.queries.DB.
-			Where("customer_id = ?", user.ID).
-			Order("date_created desc").Limit(1).First(&latestLog)
-
-		if result.Error != nil {
-			util.LOGGER.Error("POST /api/auth/login: failed to fetch latest log record", "error", result.Error)
-			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
-			return
-		}
-		resp.TotalPoints = latestLog.ResultingPoints
-
-		// Get membership
-		var memberships []db.Membership
-		result = server.queries.DB.Find(&memberships)
-		if result.Error != nil {
-			util.LOGGER.Error("POST /api/auth/login: failed to get memberships", "error", result.Error)
-			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
-			return
-		}
-
-		sort.Slice(memberships, func(i, j int) bool {
-			return memberships[i].BasePoint < memberships[j].BasePoint
-		})
-
-		var membership string
-		for i := range len(memberships) {
-			/*
-			 * Algorithm explains:
-			 * Because base point is defined as uint (and should always be), then the range should be [0, ?], where ? is the highest
-			 * rank in database. So we defined into ranges, and check if user point in [lower, higher), then user membership is
-			 * memberships[lower]. In the edge case where the current user is at higest point, we set higher = inf
-			 */
-			lower := memberships[i].BasePoint
-			var higher uint
-
-			if i == len(memberships)-1 {
-				higher = math.MaxInt
-			} else {
-				higher = memberships[i+1].BasePoint
-			}
-
-			if lower <= resp.TotalPoints && resp.TotalPoints < higher {
-				membership = memberships[i].Tier
-			}
-		}
-		resp.Membership = membership
-	}
-
-	// Generate tokens
-	accessToken, err := server.jwtService.CreateToken(user.ID, user.Role, security.AccessToken, user.TokenVersion)
 	if err != nil {
-		util.LOGGER.Error("POST /api/auth/login: failed to create access token", "error", err)
+		util.LOGGER.Error("POST /api/auth/login: failed to make login request to Directus", "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
 
-	refreshToken, err := server.jwtService.CreateToken(user.ID, user.Role, security.RefreshToken, user.TokenVersion)
+	// Parse response
+	var directusResp struct {
+		Data LoginResponse `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
+		util.LOGGER.Error("POST /api/auth/login: failed to decode response body", "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, directusResp.Data)
+}
+
+type LogoutRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+// Logout godoc
+// @Summary      User logout
+// @Description  Invalidate all tokens for logout
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request  body      LogoutRequest  true  "Logout body: refresh token"
+// @Success      200  {object}  SuccessMessage  "Successful logout, all tokens is invalidate"
+// @Failure      400  {object}  ErrorResponse  "Invalid request body or incorrect credentials"
+// @Failure      403  {object}  ErrorResponse  "Account not active, cannot login"
+// @Failure      500  {object}  ErrorResponse  "Internal server error"
+// @Router       /api/auth/logout [post]
+func (server *Server) Logout(ctx *gin.Context) {
+	// Get request body
+	var req LogoutRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid request body"})
+		return
+	}
+
+	// Make request to Directus
+	_, err := util.MakeRequest("POST", "auth/logout", map[string]any{"refresh_token": req.RefreshToken}, server.config)
 	if err != nil {
-		util.LOGGER.Error("POST /api/auth/login: failed to create refresh token")
+		util.LOGGER.Error("POST /api/auth/logout: failed to make request to Directus", "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
 
-	// Return result back to client
-	resp.AccessToken = accessToken
-	resp.RefreshToken = refreshToken
-	ctx.JSON(http.StatusOK, resp)
+	ctx.JSON(http.StatusOK, SuccessMessage{"Logout success"})
+}
+
+func (server *Server) RefreshToken(ctx *gin.Context) {
+	var req LogoutRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid request body"})
+		return
+	}
+
+	resp, err := util.MakeRequest("POST", "auth/refresh", map[string]any{"refresh_token": req.RefreshToken}, server.config)
+	if err != nil {
+		util.LOGGER.Error("POST /api/auth/refresh: failed to make request to Directus", "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		return
+	}
+
+	var directusResp struct {
+		Data LoginResponse `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
+		util.LOGGER.Error("POST /api/auth/refresh: failed to decode response", "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, directusResp.Data)
 }

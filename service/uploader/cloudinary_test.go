@@ -1,4 +1,4 @@
-package cloudinary
+package uploader
 
 import (
 	"os"

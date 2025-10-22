@@ -67,6 +67,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/auth/logout": {
+            "post": {
+                "description": "Invalidate all tokens for logout",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "User logout",
+                "parameters": [
+                    {
+                        "description": "Logout body: refresh token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.LogoutRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful logout, all tokens is invalidate",
+                        "schema": {
+                            "$ref": "#/definitions/api.SuccessMessage"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body or incorrect credentials",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Account not active, cannot login",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/auth/register": {
             "post": {
                 "description": "Creates a new user account with the provided username, email, phone, password, and role.\nSends a verification email to activate the account.",
@@ -221,13 +273,14 @@ const docTemplate = `{
         "api.LoginRequest": {
             "type": "object",
             "required": [
-                "username"
+                "email",
+                "password"
             ],
             "properties": {
-                "password": {
+                "email": {
                     "type": "string"
                 },
-                "username": {
+                "password": {
                     "type": "string"
                 }
             }
@@ -238,28 +291,21 @@ const docTemplate = `{
                 "access_token": {
                     "type": "string"
                 },
-                "email": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "membership": {
-                    "type": "string"
-                },
-                "phone": {
-                    "type": "string"
+                "expires": {
+                    "type": "integer"
                 },
                 "refresh_token": {
                     "type": "string"
-                },
-                "role": {
-                    "type": "string"
-                },
-                "total_points": {
-                    "type": "integer"
-                },
-                "username": {
+                }
+            }
+        },
+        "api.LogoutRequest": {
+            "type": "object",
+            "required": [
+                "refresh_token"
+            ],
+            "properties": {
+                "refresh_token": {
                     "type": "string"
                 }
             }
@@ -268,25 +314,25 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "email",
+                "firstname",
+                "lastname",
                 "password",
-                "phone",
-                "role",
-                "username"
+                "role"
             ],
             "properties": {
                 "email": {
                     "type": "string"
                 },
+                "firstname": {
+                    "type": "string"
+                },
+                "lastname": {
+                    "type": "string"
+                },
                 "password": {
                     "type": "string"
                 },
-                "phone": {
-                    "type": "string"
-                },
                 "role": {
-                    "type": "string"
-                },
-                "username": {
                     "type": "string"
                 }
             }
@@ -294,7 +340,22 @@ const docTemplate = `{
         "api.RegisterResponse": {
             "type": "object",
             "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "first_name": {
+                    "type": "string"
+                },
                 "id": {
+                    "type": "string"
+                },
+                "last_name": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 }
             }

@@ -5,9 +5,8 @@ import (
 	"os"
 	"tekticket/api"
 	"tekticket/db"
-	"tekticket/service/cloudinary"
-	"tekticket/service/mail"
-	"tekticket/service/security"
+	"tekticket/service/notify"
+	"tekticket/service/uploader"
 	"tekticket/service/worker"
 	"tekticket/util"
 
@@ -23,17 +22,7 @@ func main() {
 
 	// Connect to database and Redis
 	queries := db.NewQueries()
-	if err := queries.ConnectDB(config.DbConn); err != nil {
-		util.LOGGER.Error("Error connecting to database", "error", err)
-		os.Exit(1)
-	}
-
-	// Run database migration
-	if err := queries.AutoMigration(); err != nil {
-		util.LOGGER.Error("Error running auto migration", "error", err, "redis", config.RedisAddr)
-		util.LOGGER.Error("RedisAddr", "val", config.RedisAddr)
-		os.Exit(1)
-	}
+	queries.ConnectDB(config.DirectusAddr, config.DirectusStaticToken)
 
 	// Connect Redis
 	ctx := context.Background()
@@ -43,31 +32,29 @@ func main() {
 	}
 
 	// Create dependencies for server
-	jwtService := security.NewJWTService(config.SecretKey, config.TokenExpiration, config.RefreshTokenExpiration)
 	distributor := worker.NewRedisTaskDistributor(asynq.RedisClientOpt{Addr: config.RedisAddr})
-	cld, err := cloudinary.NewCld(config.CloudName, config.CloudKey, config.CloudSecret)
+	cld, err := uploader.NewCld(config.CloudName, config.CloudKey, config.CloudSecret)
 	if err != nil {
-		util.LOGGER.Error("failed to initialize Cloudinary service", "error", err)
+		util.LOGGER.Error("failed to initialize uploader service", "error", err)
 		os.Exit(1)
 	}
-	mailService := mail.NewEmailService(config.Email, config.AppPassword)
+	mailService := notify.NewEmailService(config.Email, config.AppPassword)
 
 	// Start the background server in separate goroutine (since it's will block the main thread)
 	go StartBackgroundProcessor(asynq.RedisClientOpt{Addr: config.RedisAddr}, queries, mailService)
 
 	// Start server
-	server := api.NewServer(queries, jwtService, distributor, mailService, cld)
+	server := api.NewServer(queries, distributor, mailService, cld, config)
 	if err := server.Start(); err != nil {
 		util.LOGGER.Error("Failed to start server", "error", err)
 		os.Exit(1)
 	}
-
 }
 
 func StartBackgroundProcessor(
 	redisOpts asynq.RedisClientOpt,
 	queries *db.Queries,
-	mailService mail.MailService,
+	mailService notify.MailService,
 ) error {
 	// Create the processor
 	processor := worker.NewRedisTaskProcessor(redisOpts, queries, mailService)

@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 	"tekticket/db"
-	"tekticket/service/mail"
+	"tekticket/service/notify"
 	"tekticket/util"
 	"testing"
 
@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	mailService := mail.NewEmailService(os.Getenv("EMAIL"), os.Getenv("APP_PASSWORD"))
+	mailService := notify.NewEmailService(os.Getenv("EMAIL"), os.Getenv("APP_PASSWORD"))
 
 	processor = NewRedisTaskProcessor(asynq.RedisClientOpt{Addr: os.Getenv("REDIS_ADDR")}, queries, mailService)
 	os.Exit(m.Run())

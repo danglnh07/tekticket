@@ -4,9 +4,8 @@ import (
 	"net/http"
 	"tekticket/db"
 	_ "tekticket/docs"
-	"tekticket/service/cloudinary"
-	"tekticket/service/mail"
-	"tekticket/service/security"
+	"tekticket/service/notify"
+	"tekticket/service/uploader"
 	"tekticket/service/worker"
 	"tekticket/util"
 
@@ -25,27 +24,28 @@ type Server struct {
 	queries *db.Queries
 
 	// Dependencies
-	jwtService    *security.JWTService
 	distributor   worker.TaskDistributor
-	uploadService *cloudinary.CloudinaryService
-	mailService   mail.MailService
+	uploadService *uploader.CloudinaryService
+	mailService   notify.MailService
+
+	config *util.Config
 }
 
 // Constructor method for server struct
 func NewServer(
 	queries *db.Queries,
-	jwtService *security.JWTService,
 	distributor worker.TaskDistributor,
-	mailService mail.MailService,
-	uploadService *cloudinary.CloudinaryService,
+	mailService notify.MailService,
+	uploadService *uploader.CloudinaryService,
+	config *util.Config,
 ) *Server {
 	return &Server{
 		router:        gin.Default(),
 		queries:       queries,
-		jwtService:    jwtService,
 		distributor:   distributor,
 		uploadService: uploadService,
 		mailService:   mailService,
+		config:        config,
 	}
 }
 
@@ -64,8 +64,9 @@ func (server *Server) RegisterHandler() {
 		{
 			auth.POST("/register", server.Register)
 			auth.POST("/verify/:id", server.VerifyAccount)
-			auth.POST("/resend-otp/:id", server.ResendOTP)
+			auth.POST("/resend-otp/:id", server.SendOTP)
 			auth.POST("/login", server.Login)
+			auth.POST("/logout", server.Logout)
 		}
 	}
 

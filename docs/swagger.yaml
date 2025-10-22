@@ -6,56 +6,62 @@ definitions:
     type: object
   api.LoginRequest:
     properties:
+      email:
+        type: string
       password:
         type: string
-      username:
-        type: string
     required:
-    - username
+    - email
+    - password
     type: object
   api.LoginResponse:
     properties:
       access_token:
         type: string
-      email:
-        type: string
-      id:
-        type: string
-      membership:
-        type: string
-      phone:
-        type: string
+      expires:
+        type: integer
       refresh_token:
         type: string
-      role:
+    type: object
+  api.LogoutRequest:
+    properties:
+      refresh_token:
         type: string
-      total_points:
-        type: integer
-      username:
-        type: string
+    required:
+    - refresh_token
     type: object
   api.RegisterRequest:
     properties:
       email:
         type: string
-      password:
+      firstname:
         type: string
-      phone:
+      lastname:
+        type: string
+      password:
         type: string
       role:
         type: string
-      username:
-        type: string
     required:
     - email
+    - firstname
+    - lastname
     - password
-    - phone
     - role
-    - username
     type: object
   api.RegisterResponse:
     properties:
+      email:
+        type: string
+      first_name:
+        type: string
       id:
+        type: string
+      last_name:
+        type: string
+      role:
+        type: string
+      status:
         type: string
     type: object
   api.SuccessMessage:
@@ -99,6 +105,40 @@ paths:
           schema:
             $ref: '#/definitions/api.ErrorResponse'
       summary: User login
+      tags:
+      - Auth
+  /api/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Invalidate all tokens for logout
+      parameters:
+      - description: 'Logout body: refresh token'
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.LogoutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successful logout, all tokens is invalidate
+          schema:
+            $ref: '#/definitions/api.SuccessMessage'
+        "400":
+          description: Invalid request body or incorrect credentials
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "403":
+          description: Account not active, cannot login
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: User logout
       tags:
       - Auth
   /api/auth/register:

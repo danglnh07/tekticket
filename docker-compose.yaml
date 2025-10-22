@@ -19,6 +19,19 @@ services:
         image: redis:8.2-alpine3.22
         ports:
             - 6379:6379
+    ngrok:
+        image: ngrok/ngrok:latest
+        depends_on:
+            - directus
+            - redis
+            - app
+        environment:
+            NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+        volumes:
+            - ./ngrok.yml:/etc/ngrok.yml
+        command: start --all --config /etc/ngrok.yml
+        ports:
+            - 4040:4040
     app:
         build:
             context: .
