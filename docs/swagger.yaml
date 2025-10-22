@@ -30,6 +30,19 @@ definitions:
     required:
     - refresh_token
     type: object
+  api.ProfileResponse:
+    properties:
+      avatar:
+        type: string
+      email:
+        type: string
+      first_name:
+        type: string
+      id:
+        type: string
+      last_name:
+        type: string
+    type: object
   api.RegisterRequest:
     properties:
       email:
@@ -239,4 +252,38 @@ paths:
       summary: Verify user account
       tags:
       - Auth
+  /api/profile:
+    get:
+      consumes:
+      - application/json
+      description: Get user profile
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: user profile
+          schema:
+            $ref: '#/definitions/api.ProfileResponse'
+        "400":
+          description: Invalid request body or incorrect credentials
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "403":
+          description: Account not active, cannot login
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: User profile
+      tags:
+      - Profile
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

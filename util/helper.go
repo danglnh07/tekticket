@@ -49,22 +49,30 @@ func GenerateRandomOTP() string {
 }
 
 // Helper: make request to Directus
-func MakeRequest(method, path string, body map[string]any, config *Config) (*http.Response, error) {
-	// build body
-	data, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
+func MakeRequest(method, url string, body map[string]any, token string) (*http.Response, error) {
+	var (
+		req *http.Request
+		err error
+	)
+
+	if body != nil {
+		// build body
+		data, err := json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+		req, err = http.NewRequest(method, url, bytes.NewBuffer(data))
+	} else {
+		req, err = http.NewRequest(method, url, nil)
 	}
 
-	// Create request
-	req, err := http.NewRequest(method, fmt.Sprintf("%s/%s", config.DirectusAddr, path), bytes.NewBuffer(data))
 	if err != nil {
 		return nil, err
 	}
 
 	// Set request header
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+config.DirectusStaticToken)
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	// Make request to Directus API
 	resp, err := http.DefaultClient.Do(req)

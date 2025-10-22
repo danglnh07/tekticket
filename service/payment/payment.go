@@ -7,7 +7,7 @@ import (
 )
 
 /*
- * Stripe API docs: https://docs.stripe.com/api
+* Stripe API docs: https://docs.stripe.com/api
  */
 
 // Set the stripe secret key system-wide for the Stripe SDK to work
@@ -16,10 +16,10 @@ func InitStripe(secretKey string) {
 }
 
 // Method to create payment intent, return the client secret of the intent, or error
-func CreatePaymentIntent(amount int64) (string, error) {
+func CreatePaymentIntent(amount int64, currency stripe.Currency) (*stripe.PaymentIntent, error) {
 	params := &stripe.PaymentIntentParams{
 		Amount:   stripe.Int64(amount),
-		Currency: stripe.String(string(stripe.CurrencyUSD)),
+		Currency: stripe.String(string(currency)),
 		AutomaticPaymentMethods: &stripe.PaymentIntentAutomaticPaymentMethodsParams{
 			Enabled: stripe.Bool(true),
 		},
@@ -27,10 +27,25 @@ func CreatePaymentIntent(amount int64) (string, error) {
 
 	intent, err := paymentintent.New(params)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return intent.ClientSecret, nil
+	return intent, nil
+}
+
+// Confirm a payment
+func ConfirmPaymentIntent(piID, paymentMethod, returnURL string) (*stripe.PaymentIntent, error) {
+	params := &stripe.PaymentIntentConfirmParams{
+		PaymentMethod: &paymentMethod,
+		ReturnURL:     &returnURL,
+	}
+
+	result, err := paymentintent.Confirm(piID, params)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 type RefundReason string

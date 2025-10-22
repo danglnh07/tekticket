@@ -68,6 +68,11 @@ func (server *Server) RegisterHandler() {
 			auth.POST("/login", server.Login)
 			auth.POST("/logout", server.Logout)
 		}
+
+		profile := api.Group("/profile")
+		{
+			profile.GET("", server.GetProfile)
+		}
 	}
 
 	// Swagger docs

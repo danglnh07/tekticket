@@ -18,6 +18,10 @@ type Config struct {
 	CloudName   string
 	CloudKey    string
 	CloudSecret string
+
+	// Stripe
+	StripePublishableKey string
+	StripeSecretKey      string
 }
 
 func LoadConfig(path string) *Config {
@@ -34,6 +38,10 @@ func LoadConfig(path string) *Config {
 			CloudName:   os.Getenv("CLOUDINARY_NAME"),
 			CloudKey:    os.Getenv("CLOUDINARY_APIKEY"),
 			CloudSecret: os.Getenv("CLOUDINARY_APISECRET"),
+
+			// Stripe
+			StripePublishableKey: os.Getenv("STRIPE_PUBLISHABLE_KEY"),
+			StripeSecretKey:      os.Getenv("STRIPE_SECRET_KEY"),
 		}
 	}
 
@@ -44,9 +52,14 @@ func LoadConfig(path string) *Config {
 
 		Email:       os.Getenv("EMAIL"),
 		AppPassword: os.Getenv("APP_PASSWORD"),
+
 		// cloudinary
 		CloudName:   os.Getenv("CLOUDINARY_NAME"),
 		CloudKey:    os.Getenv("CLOUDINARY_APIKEY"),
 		CloudSecret: os.Getenv("CLOUDINARY_APISECRET"),
+
+		// Stripe
+		StripePublishableKey: os.Getenv("STRIPE_PUBLISHABLE_KEY"),
+		StripeSecretKey:      os.Getenv("STRIPE_SECRET_KEY"),
 	}
 }

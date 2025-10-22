@@ -8,6 +8,6 @@ run:
 	go run main.go
 
 build: 
-	sudo docker compose down && sudo docker rmi tekticket && sudo docker compose up
+	sudo docker compose down && sudo docker rmi tekticket-app && sudo docker compose up
 
 .PHONY: test run
