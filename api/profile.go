@@ -37,7 +37,7 @@ func (server *Server) GetProfile(ctx *gin.Context) {
 	resp, status, err := util.MakeRequest("GET", url, nil, server.GetToken(ctx))
 	if err != nil {
 		util.LOGGER.Error("GET /api/profile: failed to make request to Directus", "error", err)
-		ctx.JSON(status, ErrorResponse{resp.Status})
+		ctx.JSON(status, ErrorResponse{err.Error()})
 		return
 	}
 
