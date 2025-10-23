@@ -126,7 +126,7 @@ func (server *Server) UpdateProfile(ctx *gin.Context) {
 	resp, status, err := util.MakeRequest("PATCH", url, data, server.GetToken(ctx))
 	if err != nil {
 		util.LOGGER.Error("PUT /api/profile: failed to make request into Directus", "error", err)
-		ctx.JSON(status, ErrorResponse{resp.Status})
+		ctx.JSON(status, ErrorResponse{err.Error()})
 		return
 	}
 
