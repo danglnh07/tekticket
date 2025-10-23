@@ -58,7 +58,7 @@ func (server *Server) GetProfile(ctx *gin.Context) {
 		Lastname:  directusResp.Data.Lastname,
 		Email:     directusResp.Data.Email,
 		Location:  directusResp.Data.Location,
-		Avatar:    directusResp.Data.Avatar,
+		Avatar:    util.CreateImageLink(directusResp.Data.Avatar),
 	}
 
 	ctx.JSON(http.StatusOK, profile)
@@ -141,5 +141,6 @@ func (server *Server) UpdateProfile(ctx *gin.Context) {
 		return
 	}
 
+	directusResp.Data.Avatar = util.CreateImageLink(directusResp.Data.Avatar)
 	ctx.JSON(http.StatusOK, directusResp.Data)
 }

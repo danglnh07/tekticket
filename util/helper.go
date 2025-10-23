@@ -88,3 +88,8 @@ func MakeRequest(method, url string, body map[string]any, token string) (*http.R
 
 	return resp, resp.StatusCode, nil
 }
+
+// Generate the URL of image using its ID
+func CreateImageLink(id string) string {
+	return fmt.Sprintf("http://localhost:8080/images/%s", id)
+}
