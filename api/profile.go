@@ -15,6 +15,7 @@ type ProfileResponse struct {
 	Firstname string `json:"first_name"`
 	Lastname  string `json:"last_name"`
 	Email     string `json:"email"`
+	Location  string `json:"location"`
 	Avatar    string `json:"avatar"`
 }
 
@@ -66,6 +67,7 @@ type UpdateProfileRequest struct {
 	Firstname string `json:"first_name"`
 	Lastname  string `json:"last_name"`
 	Password  string `json:"password"`
+	Location  string `json:"location"`
 	Avatar    string `json:"avatar"`
 }
 
@@ -99,6 +101,10 @@ func (server *Server) UpdateProfile(ctx *gin.Context) {
 
 	if req.Lastname = strings.TrimSpace(req.Lastname); req.Lastname != "" {
 		data["last_name"] = req.Lastname
+	}
+
+	if req.Location = strings.TrimSpace(req.Location); req.Location != "" {
+		data["location"] = req.Location
 	}
 
 	if req.Password = strings.TrimSpace(req.Password); req.Password != "" {
