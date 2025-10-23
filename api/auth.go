@@ -203,9 +203,20 @@ func (server *Server) SendOTP(ctx *gin.Context) {
 	id := ctx.Param("id")
 
 	// Check if this user exists
-	user, err := server.queries.Client.Users.Get(ctx, id)
+	url := server.config.DirectusAddr + "/users/" + id
+	resp, err := util.MakeRequest("GET", url, nil, server.config.DirectusStaticToken)
 	if err != nil {
-		util.LOGGER.Error("POST /api/auth/send-otp: failed to get user by ID", "error", err)
+		util.LOGGER.Error("POST /api/auth/resend-otp: failed to get user data", "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		return
+	}
+
+	var directusResp struct {
+		Data RegisterResponse `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
+		util.LOGGER.Error("POST /api/auth/resend-otp: failed to decode Directus response", "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
@@ -213,12 +224,12 @@ func (server *Server) SendOTP(ctx *gin.Context) {
 	// Create background job, send OTP
 	err = server.distributor.DistributeTask(ctx, worker.SendVerifyEmail, worker.SendVerifyEmailPayload{
 		ID:       id,
-		Email:    user.Email,
-		Username: fmt.Sprintf("%s %s", user.FirstName, user.LastName),
+		Email:    directusResp.Data.Email,
+		Username: fmt.Sprintf("%s %s", directusResp.Data.FirstName, directusResp.Data.LastName),
 	}, asynq.MaxRetry(5))
 
 	if err != nil {
-		util.LOGGER.Error("POST /api/auth/send-otp: failed to distribute task", "task", worker.SendVerifyEmail, "error", err)
+		util.LOGGER.Error("POST /api/auth/resend-otp: failed to distribute task", "task", worker.SendVerifyEmail, "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
