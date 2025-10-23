@@ -71,6 +71,7 @@ func (server *Server) RegisterHandler() {
 			auth.POST("/resend-otp/:id", server.SendOTP)
 			auth.POST("/login", server.Login)
 			auth.POST("/logout", server.Logout)
+			auth.POST("/refresh", server.RefreshToken)
 		}
 
 		profile := api.Group("/profile")

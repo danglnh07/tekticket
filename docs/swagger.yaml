@@ -169,6 +169,37 @@ paths:
       summary: User logout
       tags:
       - Auth
+  /api/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Uses the provided refresh token to obtain a new access token and
+        refresh token from Directus.
+      parameters:
+      - description: Request body containing the refresh token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.LogoutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: New tokens generated successfully
+          schema:
+            $ref: '#/definitions/api.LoginResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to communicate with Directus
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Refresh authentication tokens
+      tags:
+      - Auth
   /api/auth/register:
     post:
       consumes:

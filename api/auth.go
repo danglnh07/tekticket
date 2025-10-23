@@ -336,6 +336,17 @@ func (server *Server) Logout(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, SuccessMessage{"Logout success"})
 }
 
+// RefreshToken godoc
+// @Summary      Refresh authentication tokens
+// @Description  Uses the provided refresh token to obtain a new access token and refresh token from Directus.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request  body      LogoutRequest  true  "Request body containing the refresh token"
+// @Success      200  {object}  LoginResponse  "New tokens generated successfully"
+// @Failure      400  {object}  ErrorResponse  "Invalid request body"
+// @Failure      500  {object}  ErrorResponse  "Internal server error or failed to communicate with Directus"
+// @Router       /api/auth/refresh [post]
 func (server *Server) RefreshToken(ctx *gin.Context) {
 	var req LogoutRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
