@@ -411,6 +411,9 @@
                 },
                 "last_name": {
                     "type": "string"
+                },
+                "location": {
+                    "type": "string"
                 }
             }
         },
@@ -482,6 +485,9 @@
                     "type": "string"
                 },
                 "last_name": {
+                    "type": "string"
+                },
+                "location": {
                     "type": "string"
                 },
                 "password": {

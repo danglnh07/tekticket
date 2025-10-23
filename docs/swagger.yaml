@@ -42,6 +42,8 @@ definitions:
         type: string
       last_name:
         type: string
+      location:
+        type: string
     type: object
   api.RegisterRequest:
     properties:
@@ -89,6 +91,8 @@ definitions:
       first_name:
         type: string
       last_name:
+        type: string
+      location:
         type: string
       password:
         type: string

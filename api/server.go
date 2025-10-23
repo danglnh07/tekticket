@@ -153,7 +153,7 @@ func (server *Server) UploadImage(ctx *gin.Context, image string) (string, error
 	}
 
 	if err := json.NewDecoder(directusResp.Body).Decode(&diretusResult); err != nil {
-		util.LOGGER.Error(fmt.Sprint("%s %s: failed to decode directus response", method, path), "error", err)
+		util.LOGGER.Error(fmt.Sprintf("%s %s: failed to decode directus response", method, path), "error", err)
 		ctx.JSON(status, ErrorResponse{directusResp.Status})
 		return "", err
 	}

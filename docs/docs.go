@@ -422,6 +422,9 @@ const docTemplate = `{
                 },
                 "last_name": {
                     "type": "string"
+                },
+                "location": {
+                    "type": "string"
                 }
             }
         },
@@ -493,6 +496,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "last_name": {
+                    "type": "string"
+                },
+                "location": {
                     "type": "string"
                 },
                 "password": {

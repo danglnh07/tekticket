@@ -57,6 +57,7 @@ func (server *Server) GetProfile(ctx *gin.Context) {
 		Firstname: directusResp.Data.Firstname,
 		Lastname:  directusResp.Data.Lastname,
 		Email:     directusResp.Data.Email,
+		Location:  directusResp.Data.Location,
 		Avatar:    directusResp.Data.Avatar,
 	}
 
