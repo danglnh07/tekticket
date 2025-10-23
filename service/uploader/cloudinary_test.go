@@ -1,6 +1,7 @@
 package uploader
 
 import (
+	"context"
 	"os"
 	"strings"
 	"tekticket/util"
@@ -32,8 +33,15 @@ func TestMain(m *testing.M) {
 }
 
 func TestUploadImage(t *testing.T) {
-	url, err := service.UploadImage("https://s3-api.fpt.vn/fptvn-storage/2025-09-04/1756983257_thumbdragonball.jpg")
+	ctx := context.Background()
+	result, err := service.UploadImage(
+		ctx,
+		"https://s3-api.fpt.vn/fptvn-storage/2025-09-04/1756983257_thumbdragonball.jpg",
+		util.RandomString(6),
+	)
 	require.NoError(t, err)
-	require.NotEmpty(t, url)
-	util.LOGGER.Info("Test CloudinaryService", "url", url)
+	require.NotNil(t, result)
+	require.NotEmpty(t, result.URL)
+	require.NotEmpty(t, result.SecureURL)
+	util.LOGGER.Info("Test CloudinaryService", "url", result.URL, "secure_url", result.SecureURL)
 }

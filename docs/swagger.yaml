@@ -82,6 +82,17 @@ definitions:
       message:
         type: string
     type: object
+  api.UpdateProfileRequest:
+    properties:
+      avatar:
+        type: string
+      first_name:
+        type: string
+      last_name:
+        type: string
+      password:
+        type: string
+    type: object
 info:
   contact: {}
 paths:
@@ -279,6 +290,39 @@ paths:
       security:
       - BearerAuth: []
       summary: User profile
+      tags:
+      - Profile
+    put:
+      consumes:
+      - application/json
+      description: |-
+        Updates the current user's profile information including first name, last name, password, and avatar.
+        The avatar is expected to be a base64-encoded image, which will be uploaded to cloud storage and replaced with its secure URL.
+      parameters:
+      - description: Profile update request body
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.UpdateProfileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Profile updated successfully
+          schema:
+            $ref: '#/definitions/api.ProfileResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update user profile
       tags:
       - Profile
 securityDefinitions:

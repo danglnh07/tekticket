@@ -1,7 +1,10 @@
 package api
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"tekticket/db"
 	_ "tekticket/docs"
 	"tekticket/service/notify"
@@ -10,6 +13,7 @@ import (
 	"tekticket/util"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -72,11 +76,21 @@ func (server *Server) RegisterHandler() {
 		profile := api.Group("/profile")
 		{
 			profile.GET("", server.GetProfile)
+			profile.PUT("", server.UpdateProfile)
 		}
 	}
 
 	// Swagger docs
 	server.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	// Static handler
+	server.router.GET("/images/:id", func(ctx *gin.Context) {
+		// Get asset ID
+		id := ctx.Param("id")
+
+		// Redirect to the /assets/:id of Directus
+		ctx.Redirect(http.StatusPermanentRedirect, "http://localhost:8055/assets/"+id)
+	})
 }
 
 // Start server
@@ -94,4 +108,55 @@ type ErrorResponse struct {
 // String message
 type SuccessMessage struct {
 	Message string `json:"message"`
+}
+
+// Get the Bearer token
+func (server *Server) GetToken(ctx *gin.Context) string {
+	return strings.TrimPrefix(ctx.Request.Header.Get("Authorization"), "Bearer ")
+}
+
+type ImageResponse struct {
+	ID string `json:"id"`
+}
+
+// Upload image to both Cloudinary and Directus
+func (server *Server) UploadImage(ctx *gin.Context, image string) (string, error) {
+	path := ctx.FullPath()
+	method := ctx.Request.Method
+
+	// Upload the image into cloud service
+	cloudResp, err := server.uploadService.UploadImage(ctx, image, uuid.New().String())
+	if err != nil {
+		util.LOGGER.Error(fmt.Sprintf("%s %s: failed to upload image into the cloud", method, path), "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		return "", err
+	}
+
+	// Upload the image into Directus
+	url := server.config.DirectusAddr + "/files/import"
+	directusResp, status, err := util.MakeRequest(
+		"POST",
+		url,
+		map[string]any{"url": cloudResp.SecureURL},
+		server.config.DirectusStaticToken,
+	)
+
+	if err != nil {
+		util.LOGGER.Error(fmt.Sprintf("%s %s: failed to upload image into Directus", method, path), "error", err)
+		ctx.JSON(status, ErrorResponse{directusResp.Status})
+		return "", err
+	}
+
+	// Decode response from Directus
+	var diretusResult struct {
+		Data ImageResponse `json:"data"`
+	}
+
+	if err := json.NewDecoder(directusResp.Body).Decode(&diretusResult); err != nil {
+		util.LOGGER.Error(fmt.Sprint("%s %s: failed to decode directus response", method, path), "error", err)
+		ctx.JSON(status, ErrorResponse{directusResp.Status})
+		return "", err
+	}
+
+	return diretusResult.Data.ID, nil
 }

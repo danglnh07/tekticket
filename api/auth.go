@@ -98,10 +98,10 @@ func (server *Server) Register(ctx *gin.Context) {
 	}
 
 	url := fmt.Sprintf("%s/%s", server.config.DirectusAddr, "users")
-	resp, err := util.MakeRequest("POST", url, body, server.config.DirectusStaticToken)
+	resp, status, err := util.MakeRequest("POST", url, body, server.config.DirectusStaticToken)
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/register: failed to make API request to Directus", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		ctx.JSON(status, ErrorResponse{resp.Status})
 		return
 	}
 
@@ -112,7 +112,7 @@ func (server *Server) Register(ctx *gin.Context) {
 
 	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
 		util.LOGGER.Error("POST /api/auth/register: failed to decode Directus response", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{resp.Status})
 		return
 	}
 
@@ -125,7 +125,7 @@ func (server *Server) Register(ctx *gin.Context) {
 
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/register: failed to distribute task", "task", worker.SendVerifyEmail, "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{resp.Status})
 		return
 	}
 
@@ -177,10 +177,10 @@ func (server *Server) VerifyAccount(ctx *gin.Context) {
 
 	// Update status
 	url := fmt.Sprintf("%s/%s/%s", server.config.DirectusAddr, "users", id)
-	_, err = util.MakeRequest("PATCH", url, map[string]any{"status": "active"}, server.config.DirectusStaticToken)
+	resp, status, err := util.MakeRequest("PATCH", url, map[string]any{"status": "active"}, server.config.DirectusStaticToken)
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/verify: failed to update account status", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		ctx.JSON(status, ErrorResponse{resp.Status})
 		return
 	}
 
@@ -204,10 +204,10 @@ func (server *Server) SendOTP(ctx *gin.Context) {
 
 	// Check if this user exists
 	url := server.config.DirectusAddr + "/users/" + id
-	resp, err := util.MakeRequest("GET", url, nil, server.config.DirectusStaticToken)
+	resp, status, err := util.MakeRequest("GET", url, nil, server.config.DirectusStaticToken)
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/resend-otp: failed to get user data", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		ctx.JSON(status, ErrorResponse{resp.Status})
 		return
 	}
 
@@ -270,14 +270,14 @@ func (server *Server) Login(ctx *gin.Context) {
 
 	// Call login request to Directus
 	url := fmt.Sprintf("%s/%s/%s", server.config.DirectusAddr, "auth", "login")
-	resp, err := util.MakeRequest("POST", url, map[string]any{
+	resp, status, err := util.MakeRequest("POST", url, map[string]any{
 		"email":    req.Email,
 		"password": req.Password,
 	}, server.config.DirectusStaticToken)
 
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/login: failed to make login request to Directus", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		ctx.JSON(status, ErrorResponse{resp.Status})
 		return
 	}
 
@@ -321,10 +321,15 @@ func (server *Server) Logout(ctx *gin.Context) {
 
 	// Make request to Directus
 	url := fmt.Sprintf("%s/%s/%s", server.config.DirectusAddr, "auth", "logout")
-	_, err := util.MakeRequest("POST", url, map[string]any{"refresh_token": req.RefreshToken}, server.config.DirectusStaticToken)
+	resp, status, err := util.MakeRequest(
+		"POST",
+		url,
+		map[string]any{"refresh_token": req.RefreshToken},
+		server.config.DirectusStaticToken,
+	)
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/logout: failed to make request to Directus", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		ctx.JSON(status, ErrorResponse{resp.Status})
 		return
 	}
 
@@ -339,10 +344,15 @@ func (server *Server) RefreshToken(ctx *gin.Context) {
 	}
 
 	url := fmt.Sprintf("%s/%s/%s", server.config.DirectusAddr, "auth", "refresh")
-	resp, err := util.MakeRequest("POST", url, map[string]any{"refresh_token": req.RefreshToken}, server.config.DirectusStaticToken)
+	resp, status, err := util.MakeRequest(
+		"POST",
+		url,
+		map[string]any{"refresh_token": req.RefreshToken},
+		server.config.DirectusStaticToken,
+	)
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/refresh: failed to make request to Directus", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		ctx.JSON(status, ErrorResponse{resp.Status})
 		return
 	}
 

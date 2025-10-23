@@ -49,7 +49,7 @@ func GenerateRandomOTP() string {
 }
 
 // Helper: make request to Directus
-func MakeRequest(method, url string, body map[string]any, token string) (*http.Response, error) {
+func MakeRequest(method, url string, body map[string]any, token string) (*http.Response, int, error) {
 	var (
 		req *http.Request
 		err error
@@ -59,7 +59,7 @@ func MakeRequest(method, url string, body map[string]any, token string) (*http.R
 		// build body
 		data, err := json.Marshal(body)
 		if err != nil {
-			return nil, err
+			return nil, http.StatusInternalServerError, err
 		}
 		req, err = http.NewRequest(method, url, bytes.NewBuffer(data))
 	} else {
@@ -67,7 +67,7 @@ func MakeRequest(method, url string, body map[string]any, token string) (*http.R
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, http.StatusInternalServerError, err
 	}
 
 	// Set request header
@@ -77,14 +77,14 @@ func MakeRequest(method, url string, body map[string]any, token string) (*http.R
 	// Make request to Directus API
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, http.StatusInternalServerError, err
 	}
 
 	// Check if status code is success
 	if 200 > resp.StatusCode || resp.StatusCode >= 300 {
 		message, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("response status not ok: %s", string(message)+" "+resp.Status)
+		return nil, resp.StatusCode, fmt.Errorf("response status not ok: %s", string(message)+" "+resp.Status)
 	}
 
-	return resp, nil
+	return resp, resp.StatusCode, nil
 }
