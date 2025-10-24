@@ -5,7 +5,7 @@ test:
 	go test -v ./...
 
 run:
-	go run main.go
+	sudo docker compose up	
 
 build: 
 	swag init && sudo docker compose down && sudo docker rmi tekticket-app && sudo docker compose up

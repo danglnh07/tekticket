@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"tekticket/db"
@@ -89,8 +90,17 @@ func (server *Server) RegisterHandler() {
 		// Get asset ID
 		id := ctx.Param("id")
 
-		// Redirect to the /assets/:id of Directus
-		ctx.Redirect(http.StatusPermanentRedirect, "http://localhost:8055/assets/"+id)
+		// Get the image
+		resp, status, err := util.MakeRequest("GET", server.config.DirectusAddr+"/assets/"+id, nil, server.config.DirectusStaticToken)
+		if err != nil {
+			util.LOGGER.Error("GET /images/:id: failed to get assets", "error", err)
+			ctx.JSON(status, ErrorResponse{err.Error()})
+			return
+		}
+
+		// Copy content type and body
+		ctx.Header("Content-Type", resp.Header.Get("Content-Type"))
+		io.Copy(ctx.Writer, resp.Body)
 	})
 }
 
