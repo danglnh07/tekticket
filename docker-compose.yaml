@@ -15,10 +15,34 @@ services:
             DB_PASSWORD: ${DIRECTUS_DATABASE_PASSWORD}
             DB_SSL: true
             WEBSOCKETS_ENABLED: "true"
+
+            # Configure Cloudinary as storage
+            STORAGE_LOCATIONS: cloudinary
+            STORAGE_CLOUDINARY_DRIVER: cloudinary
+            STORAGE_CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_NAME}
+            STORAGE_CLOUDINARY_API_KEY: ${CLOUDINARY_APIKEY}
+            STORAGE_CLOUDINARY_API_SECRET: ${CLOUDINARY_APISECRET}
+            STORAGE_CLOUDINARY_ROOT: directus-files
+            STORAGE_CLOUDINARY_ACCESS_MODE: public
+
+            PUBLIC_URL: http://localhost:8055
     redis:
         image: redis:8.2-alpine3.22
         ports:
             - 6379:6379
+    ngrok:
+        image: ngrok/ngrok:latest
+        depends_on:
+            - directus
+            - redis
+            - app
+        environment:
+            NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+        volumes:
+            - ./ngrok.yml:/etc/ngrok.yml
+        command: start --all --config /etc/ngrok.yml
+        ports:
+            - 4040:4040
     app:
         build:
             context: .

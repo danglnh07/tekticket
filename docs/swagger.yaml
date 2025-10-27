@@ -1,0 +1,368 @@
+definitions:
+  api.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  api.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  api.LoginResponse:
+    properties:
+      access_token:
+        type: string
+      expires:
+        type: integer
+      refresh_token:
+        type: string
+    type: object
+  api.LogoutRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  api.ProfileResponse:
+    properties:
+      avatar:
+        type: string
+      email:
+        type: string
+      first_name:
+        type: string
+      id:
+        type: string
+      last_name:
+        type: string
+      location:
+        type: string
+    type: object
+  api.RegisterRequest:
+    properties:
+      email:
+        type: string
+      firstname:
+        type: string
+      lastname:
+        type: string
+      password:
+        type: string
+      role:
+        type: string
+    required:
+    - email
+    - firstname
+    - lastname
+    - password
+    - role
+    type: object
+  api.RegisterResponse:
+    properties:
+      email:
+        type: string
+      first_name:
+        type: string
+      id:
+        type: string
+      last_name:
+        type: string
+      role:
+        type: string
+      status:
+        type: string
+    type: object
+  api.SuccessMessage:
+    properties:
+      message:
+        type: string
+    type: object
+  api.UpdateProfileRequest:
+    properties:
+      avatar:
+        type: string
+      first_name:
+        type: string
+      last_name:
+        type: string
+      location:
+        type: string
+      password:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /api/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate user with username and password. Returns access and
+        refresh JWT tokens.
+      parameters:
+      - description: Login request body (username, password)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successful login with access and refresh tokens
+          schema:
+            $ref: '#/definitions/api.LoginResponse'
+        "400":
+          description: Invalid request body or incorrect credentials
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "403":
+          description: Account not active, cannot login
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: User login
+      tags:
+      - Auth
+  /api/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Invalidate all tokens for logout
+      parameters:
+      - description: 'Logout body: refresh token'
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.LogoutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successful logout, all tokens is invalidate
+          schema:
+            $ref: '#/definitions/api.SuccessMessage'
+        "400":
+          description: Invalid request body or incorrect credentials
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "403":
+          description: Account not active, cannot login
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: User logout
+      tags:
+      - Auth
+  /api/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Uses the provided refresh token to obtain a new access token and
+        refresh token from Directus.
+      parameters:
+      - description: Request body containing the refresh token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.LogoutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: New tokens generated successfully
+          schema:
+            $ref: '#/definitions/api.LoginResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to communicate with Directus
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Refresh authentication tokens
+      tags:
+      - Auth
+  /api/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Creates a new user account with the provided username, email, phone, password, and role.
+        Sends a verification email to activate the account.
+      parameters:
+      - description: Registration request body
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Create account success with status inactive
+          schema:
+            $ref: '#/definitions/api.RegisterResponse'
+        "400":
+          description: Invalid request body or existing username/email/phone
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to send verification email
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Register a new user account
+      tags:
+      - Auth
+  /api/auth/resend-otp/{id}:
+    post:
+      consumes:
+      - application/json
+      description: Resends a new OTP code to the user's registered email address if
+        the account is still inactive.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OTP resent successfully
+          schema:
+            $ref: '#/definitions/api.SuccessMessage'
+        "400":
+          description: Invalid ID or account not inactive
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Resend account verification OTP
+      tags:
+      - Auth
+  /api/auth/verify/{id}:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Verifies a user's account using the provided OTP code sent to their email.
+        Once verified, the user's account status is set to active.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 6-digit OTP verification code
+        in: query
+        name: otp
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Verify account successfully, please login
+          schema:
+            $ref: '#/definitions/api.SuccessMessage'
+        "400":
+          description: Invalid OTP, expired code, or ID mismatch
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Verify user account
+      tags:
+      - Auth
+  /api/profile:
+    get:
+      consumes:
+      - application/json
+      description: Get user profile
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: user profile
+          schema:
+            $ref: '#/definitions/api.ProfileResponse'
+        "400":
+          description: Invalid request body or incorrect credentials
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "403":
+          description: Account not active, cannot login
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: User profile
+      tags:
+      - Profile
+    put:
+      consumes:
+      - application/json
+      description: |-
+        Updates the current user's profile information including first name, last name, password, and avatar.
+        The avatar is expected to be a base64-encoded image, which will be uploaded to cloud storage and replaced with its secure URL.
+      parameters:
+      - description: Profile update request body
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.UpdateProfileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Profile updated successfully
+          schema:
+            $ref: '#/definitions/api.ProfileResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update user profile
+      tags:
+      - Profile
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
