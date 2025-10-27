@@ -525,6 +525,9 @@ const docTemplate = `{
                 "expires": {
                     "type": "integer"
                 },
+                "id": {
+                    "type": "string"
+                },
                 "refresh_token": {
                     "type": "string"
                 }
@@ -560,6 +563,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "location": {
+                    "type": "string"
+                },
+                "point": {
+                    "type": "integer"
+                },
+                "rank": {
                     "type": "string"
                 }
             }

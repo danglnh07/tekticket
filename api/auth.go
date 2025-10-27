@@ -245,6 +245,7 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
+	ID           string `json:"id"`
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	Expires      int    `json:"expires"`
@@ -292,6 +293,15 @@ func (server *Server) Login(ctx *gin.Context) {
 		util.LOGGER.Error("POST /api/auth/login: failed to decode response body", "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
+	}
+
+	// Get user ID from access token
+	var tokenPayload map[string]any
+	if err := json.Unmarshal([]byte(util.Decode(strings.Split(directusResp.Data.AccessToken, ".")[1])), &tokenPayload); err != nil {
+		// This is just additional, not necessary to stop the whole API here with error
+		util.LOGGER.Error("POST /api/auth/login: failed to get user ID from access token", "error", err)
+	} else {
+		directusResp.Data.ID = tokenPayload["id"].(string)
 	}
 
 	ctx.JSON(http.StatusOK, directusResp.Data)
