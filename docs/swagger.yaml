@@ -79,6 +79,13 @@ definitions:
       status:
         type: string
     type: object
+  api.ResetPasswordRequest:
+    properties:
+      new_password:
+        type: string
+      token:
+        type: string
+    type: object
   api.SuccessMessage:
     properties:
       message:
@@ -167,6 +174,69 @@ paths:
           schema:
             $ref: '#/definitions/api.ErrorResponse'
       summary: User logout
+      tags:
+      - Auth
+  /api/auth/password/request:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Sends a password reset email to the specified email address if the account exists.
+        The email will contain a link or OTP to reset the user's password.
+      parameters:
+      - description: User email address
+        in: query
+        name: email
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email sent successfully
+          schema:
+            $ref: '#/definitions/api.SuccessMessage'
+        "400":
+          description: No account with this email or invalid input
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to communicate with Directus
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Send password reset request
+      tags:
+      - Auth
+  /api/auth/password/reset:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Resets the user's password using a valid password reset token.
+        The token must be provided in the request body and is validated for authenticity and expiration.
+      parameters:
+      - description: Password reset request body containing token and new password
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.ResetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password changed successfully
+          schema:
+            $ref: '#/definitions/api.SuccessMessage'
+        "400":
+          description: Invalid or expired token
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to communicate with Directus
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Reset user password
       tags:
       - Auth
   /api/auth/refresh:

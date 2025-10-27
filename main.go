@@ -44,7 +44,7 @@ func main() {
 	mailService := notify.NewEmailService(config.Email, config.AppPassword)
 
 	// Start the background server in separate goroutine (since it's will block the main thread)
-	go StartBackgroundProcessor(asynq.RedisClientOpt{Addr: config.RedisAddr}, queries, mailService)
+	go StartBackgroundProcessor(asynq.RedisClientOpt{Addr: config.RedisAddr}, queries, mailService, config)
 
 	// Start server
 	server := api.NewServer(queries, distributor, mailService, cld, config)
@@ -58,9 +58,10 @@ func StartBackgroundProcessor(
 	redisOpts asynq.RedisClientOpt,
 	queries *db.Queries,
 	mailService notify.MailService,
+	config *util.Config,
 ) error {
 	// Create the processor
-	processor := worker.NewRedisTaskProcessor(redisOpts, queries, mailService)
+	processor := worker.NewRedisTaskProcessor(redisOpts, queries, mailService, config)
 
 	// Start process tasks
 	return processor.Start()

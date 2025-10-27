@@ -13,6 +13,8 @@ type Config struct {
 	DirectusStaticToken string
 	Email               string
 	AppPassword         string
+	SecretKey           string
+	FrontendURL         string
 
 	// cloudinary
 	CloudName   string
@@ -33,7 +35,8 @@ func LoadConfig(path string) *Config {
 			DirectusStaticToken: os.Getenv("DIRECTUS_STATIC_TOKEN"),
 			Email:               os.Getenv("EMAIL"),
 			AppPassword:         os.Getenv("APP_PASSWORD"),
-
+			SecretKey:           os.Getenv("SECRET_KEY"),
+			FrontendURL:         os.Getenv("FRONTEND_URL"),
 			// cloudinary
 			CloudName:   os.Getenv("CLOUDINARY_NAME"),
 			CloudKey:    os.Getenv("CLOUDINARY_APIKEY"),
@@ -52,6 +55,8 @@ func LoadConfig(path string) *Config {
 
 		Email:       os.Getenv("EMAIL"),
 		AppPassword: os.Getenv("APP_PASSWORD"),
+		SecretKey:   os.Getenv("SECRET_KEY"),
+		FrontendURL: os.Getenv("FRONTEND_URL"),
 
 		// cloudinary
 		CloudName:   os.Getenv("CLOUDINARY_NAME"),
