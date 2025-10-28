@@ -183,7 +183,6 @@ func MapToEvent(data map[string]interface{}) Event {
 	}
 	event.Location = strings.Join(parts, ", ")
 
-	// Category (expand hoặc id)
 	if catStr, ok := data["category_id"].(string); ok {
 		event.Category = catStr
 	}
@@ -222,26 +221,22 @@ func MapToEvent(data map[string]interface{}) Event {
 }
 
 // AttachScheduleToEvents gắn StartTime/EndTime từ event_schedules cho từng Event.
-// Nếu có choseDate, chỉ lấy schedules phù hợp filter thời gian (choseDate nằm trong khoảng event).
 func AttachScheduleToEvents(events []Event, choseDate, ed, directusAddr, token string) []Event {
 	if len(events) == 0 {
 		return events
 	}
 
-	// gom danh sách event id
 	ids := make([]string, 0, len(events))
 	for _, e := range events {
 		ids = append(ids, e.ID)
 	}
 
-	// event_id IN (...)
 	idFilters := make([]string, 0, len(ids))
 	for _, id := range ids {
 		idFilters = append(idFilters, fmt.Sprintf(`{"event_id":{"_eq":"%s"}}`, id))
 	}
 	base := fmt.Sprintf(`{"_or":[%s]}`, strings.Join(idFilters, ","))
 
-	// áp lại điều kiện thời gian với choseDate
 	var timeFilter string
 	if choseDate != "" {
 		// Logic: (start_time <= choseDate) AND (end_time >= choseDate) - event diễn ra trong ngày được chọn

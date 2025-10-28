@@ -44,7 +44,6 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 	search := ctx.Query("search")
 	category := ctx.Query("category")
 	location := ctx.Query("location")
-	// Chỉ sử dụng chose_date để lọc events
 	choseDate := ctx.Query("chose_date")
 	status := ctx.DefaultQuery("status", "published")
 	sortField := ctx.DefaultQuery("sort", "-date_created")
@@ -79,7 +78,7 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 	util.LOGGER.Info("Date normalization", "original_chose_date", choseDate, "normalized_chose_date", normalizedChoseDate)
 
 	// =========================================
-	// 🔹 BƯỚC 1: Lấy danh sách event_id từ bảng event_schedules nếu có filter thời gian
+	// Lấy danh sách event_id từ bảng event_schedules nếu có filter thời gian
 	// =========================================
 	var eventIDs []string
 	util.LOGGER.Info("Time filter check", "chose_date", normalizedChoseDate, "has_time_filter", normalizedChoseDate != "")
@@ -136,7 +135,7 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 	}
 
 	// =========================================
-	// 🔹 BƯỚC 2: Tạo filter cho bảng events
+	// Tạo filter cho bảng events
 	// =========================================
 	filters := util.BuildEventFilters(search, category, location, status)
 	if len(eventIDs) > 0 {
@@ -149,7 +148,7 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 	}
 
 	// =========================================
-	// 🔹 BƯỚC 3: Gọi API Directus để lấy danh sách events
+	// Gọi API Directus để lấy danh sách events
 	// =========================================
 	queryParams := url.Values{}
 	if filters != "" {
@@ -185,7 +184,7 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 	}
 
 	// =========================================
-	// 🔹 BƯỚC 4: Map dữ liệu sang struct Event
+	// Map dữ liệu sang struct Event
 	// =========================================
 	events := make([]util.Event, 0, len(directusResp.Data))
 	for _, item := range directusResp.Data {
@@ -196,14 +195,8 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 		events = append(events, event)
 	}
 
-	// =========================================
-	// 🔹 BƯỚC 5: Gắn thời gian từ bảng event_schedules (theo đúng filter thời gian nếu có)
-	// =========================================
 	events = util.AttachScheduleToEvents(events, normalizedChoseDate, "", server.config.DirectusAddr, server.config.DirectusStaticToken)
 
-	// =========================================
-	// 🔹 BƯỚC 6: Trả về response
-	// =========================================
 	response := EventListResponse{Data: events}
 	if directusResp.Meta != nil {
 		response.Meta = &Meta{
