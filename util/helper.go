@@ -184,7 +184,7 @@ func MapToEvent(data map[string]interface{}) Event {
 	event.Location = strings.Join(parts, ", ")
 
 	// Category (expand hoặc id)
-	if catStr, ok := data["category_id.name"].(string); ok {
+	if catStr, ok := data["category_id"].(string); ok {
 		event.Category = catStr
 	}
 

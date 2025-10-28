@@ -155,7 +155,7 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 	if filters != "" {
 		queryParams.Add("filter", filters)
 	}
-	queryParams.Add("fields", "*,category_id.name")
+	queryParams.Add("fields", "*,category_id")
 	queryParams.Add("limit", strconv.Itoa(limit))
 	queryParams.Add("offset", strconv.Itoa(offset))
 	queryParams.Add("sort", sortField)
@@ -226,7 +226,7 @@ func (server *Server) GetEventByID(ctx *gin.Context) {
 	}
 
 	queryParams := url.Values{}
-	queryParams.Add("fields", "*,category_id.name") // lấy category name
+	queryParams.Add("fields", "*,category_id")
 
 	directusURL := fmt.Sprintf("%s/items/events/%s?%s", server.config.DirectusAddr, id, queryParams.Encode())
 	resp, statusCode, err := util.MakeRequest("GET", directusURL, nil, server.config.DirectusStaticToken)
