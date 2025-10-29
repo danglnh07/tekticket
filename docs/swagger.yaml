@@ -4,6 +4,46 @@ definitions:
       error:
         type: string
     type: object
+  api.Event:
+    properties:
+      capacity:
+        type: integer
+      category:
+        type: string
+      date_created:
+        type: string
+      description:
+        type: string
+      end_time:
+        type: string
+      id:
+        type: string
+      image:
+        type: string
+      location:
+        type: string
+      name:
+        type: string
+      organizer:
+        type: string
+      price:
+        type: number
+      start_time:
+        type: string
+      status:
+        type: string
+      tickets_sold:
+        type: integer
+    type: object
+  api.EventListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/api.Event'
+        type: array
+      meta:
+        $ref: '#/definitions/api.Meta'
+    type: object
   api.LoginRequest:
     properties:
       email:
@@ -31,6 +71,17 @@ definitions:
         type: string
     required:
     - refresh_token
+    type: object
+  api.Meta:
+    properties:
+      filter_count:
+        type: integer
+      limit:
+        type: integer
+      offset:
+        type: integer
+      total_count:
+        type: integer
     type: object
   api.ProfileResponse:
     properties:
@@ -370,6 +421,112 @@ paths:
       summary: Verify user account
       tags:
       - Auth
+  /api/events:
+    get:
+      consumes:
+      - application/json
+      description: |-
+        Returns a paginated list of events with optional filters for search, category, location, date, and status.
+        If `chose_date` is provided, only events that are active during that date will be returned.
+      parameters:
+      - description: Bearer token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Search by event title or description
+        in: query
+        name: search
+        type: string
+      - description: Filter by category ID
+        in: query
+        name: category
+        type: string
+      - description: Filter by location
+        in: query
+        name: location
+        type: string
+      - description: Filter events active on this date (YYYY-MM-DD or ISO format)
+        in: query
+        name: chose_date
+        type: string
+      - description: 'Filter by status (default: published)'
+        in: query
+        name: status
+        type: string
+      - description: 'Sort field (default: -date_created)'
+        in: query
+        name: sort
+        type: string
+      - description: 'Limit number of items (default: 20, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Offset for pagination (default: 0)'
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of events retrieved successfully
+          schema:
+            $ref: '#/definitions/api.EventListResponse'
+        "400":
+          description: Invalid query parameters
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized access
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or Directus failure
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Retrieve list of events
+      tags:
+      - Events
+  /api/events/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Returns detailed information about a specific event, including
+        category, images, and schedule data.
+      parameters:
+      - description: Bearer token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Event ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Event details retrieved successfully
+          schema:
+            $ref: '#/definitions/api.Event'
+        "400":
+          description: Invalid or missing event ID
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized access
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to communicate with Directus
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Retrieve a single event by ID
+      tags:
+      - Events
   /api/profile:
     get:
       consumes:
