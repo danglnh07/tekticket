@@ -395,7 +395,6 @@ func MapToEvent(data map[string]interface{}) Event {
 		event.EndTime = endTime
 	}
 
-	// (Giữ nguyên các field còn lại)
 	if price, ok := data["price"].(float64); ok {
 		event.Price = &price
 	}
