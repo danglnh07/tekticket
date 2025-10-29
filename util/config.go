@@ -24,6 +24,9 @@ type Config struct {
 	// Stripe
 	StripePublishableKey string
 	StripeSecretKey      string
+
+	// Ably
+	AblyApiKey string
 }
 
 func LoadConfig(path string) *Config {
@@ -37,6 +40,7 @@ func LoadConfig(path string) *Config {
 			AppPassword:         os.Getenv("APP_PASSWORD"),
 			SecretKey:           os.Getenv("SECRET_KEY"),
 			FrontendURL:         os.Getenv("FRONTEND_URL"),
+
 			// cloudinary
 			CloudName:   os.Getenv("CLOUDINARY_NAME"),
 			CloudKey:    os.Getenv("CLOUDINARY_APIKEY"),
@@ -45,6 +49,9 @@ func LoadConfig(path string) *Config {
 			// Stripe
 			StripePublishableKey: os.Getenv("STRIPE_PUBLISHABLE_KEY"),
 			StripeSecretKey:      os.Getenv("STRIPE_SECRET_KEY"),
+
+			// Ably
+			AblyApiKey: os.Getenv("ABLY_API_KEY"),
 		}
 	}
 
@@ -66,5 +73,8 @@ func LoadConfig(path string) *Config {
 		// Stripe
 		StripePublishableKey: os.Getenv("STRIPE_PUBLISHABLE_KEY"),
 		StripeSecretKey:      os.Getenv("STRIPE_SECRET_KEY"),
+
+		// Ably
+		AblyApiKey: os.Getenv("ABLY_API_KEY"),
 	}
 }

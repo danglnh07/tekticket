@@ -46,10 +46,6 @@ definitions:
         type: string
       location:
         type: string
-      point:
-        type: integer
-      rank:
-        type: string
     type: object
   api.RegisterRequest:
     properties:

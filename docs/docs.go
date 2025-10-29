@@ -564,12 +564,6 @@ const docTemplate = `{
                 },
                 "location": {
                     "type": "string"
-                },
-                "point": {
-                    "type": "integer"
-                },
-                "rank": {
-                    "type": "string"
                 }
             }
         },
