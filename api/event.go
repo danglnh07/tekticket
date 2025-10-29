@@ -67,6 +67,7 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 
 	limit, err := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
 	if err != nil || limit < 1 {
+		util.LOGGER.Info("Invalid limit parameter, defaulting to 20", "input", ctx.Query("limit"))
 		limit = 20
 	}
 	if limit > 100 {
@@ -78,8 +79,8 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 		offset = 0
 	}
 
-    // ---- Chuẩn hoá ngày chose_date (nếu user chỉ nhập YYYY-MM-DD) ----
-    normalizedChoseDate := util.NormalizeChoseDate(choseDate)
+	// ---- Chuẩn hoá ngày chose_date (nếu user chỉ nhập YYYY-MM-DD) ----
+	normalizedChoseDate := util.NormalizeChoseDate(choseDate)
 
 	// Debug
 	util.LOGGER.Info("Date normalization",
@@ -131,15 +132,10 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 			return
 		}
 
-		seen := make(map[string]struct{})
+		// event có thể có nhiều khung giờ khác nhau, nhưng không thể nào đè chồng lên nhau được -> event_id sẽ không trùng lặp
 		for _, row := range schRes.Data {
 			id := row.EventID.ID
-			if id != "" {
-				if _, ok := seen[id]; !ok {
-					seen[id] = struct{}{}
-					eventIDs = append(eventIDs, id)
-				}
-			}
+			eventIDs = append(eventIDs, id)
 		}
 	}
 
