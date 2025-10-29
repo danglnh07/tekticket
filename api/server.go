@@ -30,10 +30,9 @@ type Server struct {
 
 	// Dependencies
 	distributor   worker.TaskDistributor
-	uploadService *uploader.CloudinaryService
 	mailService   notify.MailService
-
-	config *util.Config
+	uploadService *uploader.CloudinaryService
+	config        *util.Config
 }
 
 // Constructor method for server struct

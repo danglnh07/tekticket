@@ -12,19 +12,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// =======================
-// Models & DTOs
-// =======================
-
 // EventListResponse represents the response for list events
 type EventListResponse struct {
 	Data []Event `json:"data"`
 	Meta *Meta   `json:"meta,omitempty"`
-}
-
-// EventDetailResponse represents the response for event detail
-type EventDetailResponse struct {
-	Data Event `json:"data"`
 }
 
 // Meta represents pagination metadata
@@ -35,6 +26,7 @@ type Meta struct {
 	Offset      int `json:"offset"`
 }
 
+// Event struct
 type Event struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
@@ -52,12 +44,36 @@ type Event struct {
 	TicketsSold *int     `json:"tickets_sold,omitempty"`
 }
 
-// =======================
-// Handlers
-// =======================
-
-// GET /api/events
+// GetEvents godoc
+// @Summary      Retrieve list of events
+// @Description  Returns a paginated list of events with optional filters for search, category, location, date, and status.
+// @Description  If `chose_date` is provided, only events that are active during that date will be returned.
+// @Tags         Events
+// @Accept       json
+// @Produce      json
+// @Param        Authorization  header    string  true   "Bearer token"
+// @Param        search          query     string  false  "Search by event title or description"
+// @Param        category        query     string  false  "Filter by category ID"
+// @Param        location        query     string  false  "Filter by location"
+// @Param        chose_date      query     string  false  "Filter events active on this date (YYYY-MM-DD or ISO format)"
+// @Param        status          query     string  false  "Filter by status (default: published)"
+// @Param        sort            query     string  false  "Sort field (default: -date_created)"
+// @Param        limit           query     int     false  "Limit number of items (default: 20, max: 100)"
+// @Param        offset          query     int     false  "Offset for pagination (default: 0)"
+// @Success      200  {object}  EventListResponse  "List of events retrieved successfully"
+// @Failure      400  {object}  ErrorResponse       "Invalid query parameters"
+// @Failure      401  {object}  ErrorResponse       "Unauthorized access"
+// @Failure      500  {object}  ErrorResponse       "Internal server error or Directus failure"
+// @Router       /api/events [get]
 func (server *Server) GetEvents(ctx *gin.Context) {
+	// Get user access token
+	token := server.GetToken(ctx)
+	if token == "" {
+		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
+		return
+	}
+
+	// Get filter parameters
 	search := ctx.Query("search")
 	category := ctx.Query("category")
 	location := ctx.Query("location")
@@ -67,86 +83,74 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 
 	limit, err := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
 	if err != nil || limit < 1 {
-		util.LOGGER.Info("Invalid limit parameter, defaulting to 20", "input", ctx.Query("limit"))
+		util.LOGGER.Warn("GET /api/events: invalid limit parameter, defaulting to 20", "input", ctx.Query("limit"))
 		limit = 20
 	}
 	if limit > 100 {
+		util.LOGGER.Warn("GET /api/events: limit parameter exceed 100, defaulting to 100", "limit", limit)
 		limit = 100
 	}
 
 	offset, err := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 	if err != nil || offset < 0 {
+		util.LOGGER.Warn("GET /api/events: offset parameter invalid, defaulting to 0", "offset", ctx.Query("offset"))
 		offset = 0
 	}
 
-	// ---- Chuẩn hoá ngày chose_date (nếu user chỉ nhập YYYY-MM-DD) ----
+	// normalize choose_date (if user only provide YYYY-MM-DD, without the time segments)
 	normalizedChoseDate := util.NormalizeChoseDate(choseDate)
+	util.LOGGER.Info("GET /api/events: date normalization", "original", choseDate, "normalized", normalizedChoseDate)
 
-	// Debug
-	util.LOGGER.Info("Date normalization",
-		"original_chose_date", choseDate,
-		"normalized_chose_date", normalizedChoseDate,
-	)
-
-	// =========================================
-	// Lấy danh sách event_id từ bảng event_schedules nếu có filter thời gian
-	// =========================================
+	// If choose_date is provided, we only fetch events that has their schedule include choose_date
 	var eventIDs []string
-	util.LOGGER.Info("Time filter check",
-		"chose_date", normalizedChoseDate,
-		"has_time_filter", normalizedChoseDate != "",
-	)
 	if normalizedChoseDate != "" {
-		// (start_time <= chose_date) AND (end_time >= chose_date)
+		// start_time <= choose_date <= end_time
 		filterStr := fmt.Sprintf(
 			`{"_and":[{"start_time":{"_lte":"%s"}},{"end_time":{"_gte":"%s"}}]}`,
 			normalizedChoseDate, normalizedChoseDate,
 		)
+		util.LOGGER.Info("GET /api/events: time filter", "filter_str", filterStr)
 
-		util.LOGGER.Info("Time filter", "filter_str", filterStr)
-
+		// Build the query URL
 		scheduleURL := fmt.Sprintf(
 			"%s/items/event_schedules?filter=%s&fields=event_id.id&limit=-1",
 			server.config.DirectusAddr,
 			url.QueryEscape(filterStr),
 		)
 
-		resp, statusCode, err := util.MakeRequest("GET", scheduleURL, nil, server.config.DirectusStaticToken)
+		// Make request to Directus
+		scheduleResp, statusCode, err := util.MakeRequest("GET", scheduleURL, nil, token)
 		if err != nil {
 			util.LOGGER.Error("GET /api/events: failed to get schedules from Directus", "error", err)
 			ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
 			return
 		}
-		defer resp.Body.Close()
+		defer scheduleResp.Body.Close()
 
-		var schRes struct {
+		// Parse response from Directus request
+		var scheduleDirectusResp struct {
 			Data []struct {
 				EventID struct {
 					ID string `json:"id"`
 				} `json:"event_id"`
 			} `json:"data"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&schRes); err != nil {
+		if err := json.NewDecoder(scheduleResp.Body).Decode(&scheduleDirectusResp); err != nil {
 			util.LOGGER.Error("GET /api/events: failed to decode schedules response", "error", err)
 			ctx.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Internal server error"})
 			return
 		}
 
-		// event có thể có nhiều khung giờ khác nhau, nhưng không thể nào đè chồng lên nhau được -> event_id sẽ không trùng lặp
-		for _, row := range schRes.Data {
-			id := row.EventID.ID
-			eventIDs = append(eventIDs, id)
+		// 1 event can have different opening time, but these range-time will never overlapped, so there would be no way
+		// that an event ID can be duplicate
+		for _, row := range scheduleDirectusResp.Data {
+			eventIDs = append(eventIDs, row.EventID.ID)
 		}
 	}
 
-	util.LOGGER.Info("Event IDs found from schedules",
-		"count", len(eventIDs),
-		"event_ids", eventIDs,
-	)
-
-	// Nếu có filter thời gian nhưng không tìm thấy event nào → trả rỗng luôn
+	// If filter date param provided, and no eventID found, then we stop and return here
 	if normalizedChoseDate != "" && len(eventIDs) == 0 {
-		util.LOGGER.Info("No events found matching time filter", "chose_date", normalizedChoseDate)
+		util.LOGGER.Info("GET /api/events: no events found matching time filter", "chose_date", normalizedChoseDate)
 		ctx.JSON(http.StatusOK, EventListResponse{
 			Data: []Event{},
 			Meta: &Meta{TotalCount: 0, FilterCount: 0, Limit: limit, Offset: offset},
@@ -154,9 +158,7 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 		return
 	}
 
-	// =========================================
-	// Tạo filter cho bảng events
-	// =========================================
+	// Build filter to get the list of events
 	filters := BuildEventFilters(search, category, location, status)
 	if len(eventIDs) > 0 {
 		idFilter := fmt.Sprintf(`{"id":{"_in":["%s"]}}`, strings.Join(eventIDs, `","`))
@@ -167,9 +169,7 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 		}
 	}
 
-	// =========================================
-	// Gọi API Directus để lấy danh sách events
-	// =========================================
+	// Make API to Directus to get events
 	queryParams := url.Values{}
 	if filters != "" {
 		queryParams.Add("filter", filters)
@@ -181,34 +181,33 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 	queryParams.Add("sort", sortField)
 	queryParams.Add("meta", "total_count,filter_count")
 
-	directusURL := fmt.Sprintf("%s/items/events?%s", server.config.DirectusAddr, queryParams.Encode())
-	resp2, statusCode, err2 := util.MakeRequest("GET", directusURL, nil, server.config.DirectusStaticToken)
-	if err2 != nil {
-		util.LOGGER.Error("GET /api/events: failed to get events from Directus", "error", err2)
-		ctx.JSON(statusCode, ErrorResponse{Message: err2.Error()})
+	eventURL := fmt.Sprintf("%s/items/events?%s", server.config.DirectusAddr, queryParams.Encode())
+	eventResp, statusCode, err := util.MakeRequest("GET", eventURL, nil, token)
+	if err != nil {
+		util.LOGGER.Error("GET /api/events: failed to get events from Directus", "error", err)
+		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
 		return
 	}
-	defer resp2.Body.Close()
+	defer eventResp.Body.Close()
 
-	var directusResp struct {
-		Data []map[string]interface{} `json:"data"`
+	// Parse events response from Directus
+	var directusEventResp struct {
+		Data []map[string]any `json:"data"`
 		Meta *struct {
 			TotalCount  int `json:"total_count"`
 			FilterCount int `json:"filter_count"`
 		} `json:"meta,omitempty"`
 	}
 
-	if err := json.NewDecoder(resp2.Body).Decode(&directusResp); err != nil {
+	if err := json.NewDecoder(eventResp.Body).Decode(&directusEventResp); err != nil {
 		util.LOGGER.Error("GET /api/events: failed to decode Directus response", "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Internal server error"})
 		return
 	}
 
-	// =========================================
-	// Map dữ liệu sang struct Event
-	// =========================================
-	events := make([]Event, 0, len(directusResp.Data))
-	for _, item := range directusResp.Data {
+	// Map result
+	events := make([]Event, 0, len(directusEventResp.Data))
+	for _, item := range directusEventResp.Data {
 		event := MapToEvent(item)
 		if event.Image != "" {
 			event.Image = util.CreateImageLink(event.Image)
@@ -216,20 +215,20 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 		events = append(events, event)
 	}
 
-	// Gắn lịch (start/end time) theo chose_date nếu có
+	// If choose_date filter provided, we need to attach additional information to the response
 	events = AttachScheduleToEvents(
 		events,
 		normalizedChoseDate,
-		"", // ed (end-date filter) nếu sau này cần
+		"", // ed (end-date filter) if future needed
 		server.config.DirectusAddr,
 		server.config.DirectusStaticToken,
 	)
 
 	response := EventListResponse{Data: events}
-	if directusResp.Meta != nil {
+	if directusEventResp.Meta != nil {
 		response.Meta = &Meta{
-			TotalCount:  directusResp.Meta.TotalCount,
-			FilterCount: directusResp.Meta.FilterCount,
+			TotalCount:  directusEventResp.Meta.TotalCount,
+			FilterCount: directusEventResp.Meta.FilterCount,
 			Limit:       limit,
 			Offset:      offset,
 		}
@@ -238,19 +237,41 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, response)
 }
 
-// GET /api/events/:id
+// GetEventByID godoc
+// @Summary      Retrieve a single event by ID
+// @Description  Returns detailed information about a specific event, including category, images, and schedule data.
+// @Tags         Events
+// @Accept       json
+// @Produce      json
+// @Param        Authorization  header    string  true   "Bearer token"
+// @Param        id              path      string  true   "Event ID"
+// @Success      200  {object}  Event             "Event details retrieved successfully"
+// @Failure      400  {object}  ErrorResponse     "Invalid or missing event ID"
+// @Failure      401  {object}  ErrorResponse     "Unauthorized access"
+// @Failure      500  {object}  ErrorResponse     "Internal server error or failed to communicate with Directus"
+// @Router       /api/events/{id} [get]
 func (server *Server) GetEventByID(ctx *gin.Context) {
+	// Get access token
+	token := server.GetToken(ctx)
+	if token == "" {
+		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
+		return
+	}
+
+	// Get event ID by request path parameter
 	id := ctx.Param("id")
 	if id == "" {
 		ctx.JSON(http.StatusBadRequest, ErrorResponse{Message: "Event ID is required"})
 		return
 	}
 
+	// Build the query URL
 	queryParams := url.Values{}
 	queryParams.Add("fields", "*,category_id.id,category_id.name,image.id,preview_image.id")
-
 	directusURL := fmt.Sprintf("%s/items/events/%s?%s", server.config.DirectusAddr, id, queryParams.Encode())
-	resp, statusCode, err := util.MakeRequest("GET", directusURL, nil, server.config.DirectusStaticToken)
+
+	// Make request to Directus
+	resp, statusCode, err := util.MakeRequest("GET", directusURL, nil, token)
 	if err != nil {
 		util.LOGGER.Error("GET /api/events/:id: failed to get event from Directus", "error", err, "id", id)
 		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
@@ -258,8 +279,9 @@ func (server *Server) GetEventByID(ctx *gin.Context) {
 	}
 	defer resp.Body.Close()
 
+	// Parse response from Directus request
 	var directusResp struct {
-		Data map[string]interface{} `json:"data"`
+		Data map[string]any `json:"data"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
@@ -270,7 +292,7 @@ func (server *Server) GetEventByID(ctx *gin.Context) {
 
 	event := MapToEvent(directusResp.Data)
 
-	// Ở API detail, không có filter thời gian từ query → truyền rỗng để lấy lịch sớm nhất/có sẵn
+	// Since this is single GET, we don't have a date filter, so we pass empty value to get the available one
 	events := AttachScheduleToEvents(
 		[]Event{event},
 		"",
@@ -285,10 +307,10 @@ func (server *Server) GetEventByID(ctx *gin.Context) {
 		event.Image = util.CreateImageLink(event.Image)
 	}
 
-	ctx.JSON(http.StatusOK, EventDetailResponse{Data: event})
+	ctx.JSON(http.StatusOK, event)
 }
 
-// buildEventFilters tạo filter JSON cho bảng events từ các query cơ bản
+// Helper method: build the filter query string for event querying
 func BuildEventFilters(search, category, location, status string) string {
 	var filters []string
 
@@ -316,8 +338,8 @@ func BuildEventFilters(search, category, location, status string) string {
 	return fmt.Sprintf(`{"_and":[%s]}`, strings.Join(filters, ","))
 }
 
-// mapToEvent chuyển raw map từ Directus sang struct Event
-func MapToEvent(data map[string]interface{}) Event {
+// Map response map into Event struct
+func MapToEvent(data map[string]any) Event {
 	event := Event{}
 
 	if id, ok := data["id"].(string); ok {
@@ -351,8 +373,8 @@ func MapToEvent(data map[string]interface{}) Event {
 	}
 	event.Location = strings.Join(parts, ", ")
 
-	// ===== Category (giữ nguyên) =====
-	if catObj, ok := data["category_id"].(map[string]interface{}); ok {
+	// Handle category
+	if catObj, ok := data["category_id"].(map[string]any); ok {
 		if catName, ok := catObj["name"].(string); ok && catName != "" {
 			event.Category = catName
 		} else if catID, ok := catObj["id"].(string); ok {
@@ -362,24 +384,8 @@ func MapToEvent(data map[string]interface{}) Event {
 		event.Category = catStr
 	}
 
-	// ===== Image (mới): hỗ trợ cả string hoặc object, và fallback sang preview_image =====
-	// 1) image
-	if imgStr, ok := data["image"].(string); ok && imgStr != "" {
-		event.Image = imgStr
-	} else if imgObj, ok := data["image"].(map[string]interface{}); ok {
-		if id, ok := imgObj["id"].(string); ok && id != "" {
-			event.Image = id
-		}
-	}
-	// 2) preview_image (fallback nếu image trống)
-	if event.Image == "" {
-		if pStr, ok := data["preview_image"].(string); ok && pStr != "" {
-			event.Image = pStr
-		} else if pObj, ok := data["preview_image"].(map[string]interface{}); ok {
-			if id, ok := pObj["id"].(string); ok && id != "" {
-				event.Image = id
-			}
-		}
+	if previewImage, ok := data["preview_image"].(string); ok {
+		event.Image = util.CreateImageLink(previewImage)
 	}
 
 	if startTime, ok := data["start_time"].(string); ok {
@@ -413,7 +419,7 @@ func MapToEvent(data map[string]interface{}) Event {
 	return event
 }
 
-// AttachScheduleToEvents gắn StartTime/EndTime từ event_schedules cho từng Event.
+// Attach start/end time from event_schedules to each event
 func AttachScheduleToEvents(events []Event, choseDate, ed, directusAddr, token string) []Event {
 	if len(events) == 0 {
 		return events
@@ -432,7 +438,7 @@ func AttachScheduleToEvents(events []Event, choseDate, ed, directusAddr, token s
 
 	var timeFilter string
 	if choseDate != "" {
-		// Logic: (start_time <= choseDate) AND (end_time >= choseDate) - event diễn ra trong ngày được chọn
+		// Logic: (start_time <= choseDate) AND (end_time >= choseDate)
 		timeFilter = fmt.Sprintf(`{"_and":[{"start_time":{"_lte":"%s"}},{"end_time":{"_gte":"%s"}}]}`, choseDate, choseDate)
 	}
 
@@ -446,8 +452,8 @@ func AttachScheduleToEvents(events []Event, choseDate, ed, directusAddr, token s
 	qp := url.Values{}
 	qp.Add("filter", filter)
 	qp.Add("fields", "event_id,start_time,end_time")
-	qp.Add("sort", "start_time") // để lấy lịch sớm nhất (hoặc sớm nhất trong khoảng)
-	qp.Add("limit", "-1")        // nếu Directus cho phép unlimited
+	qp.Add("sort", "start_time") // Get the earliest
+	qp.Add("limit", "-1")        // If Directus allow unlimited
 
 	u := fmt.Sprintf("%s/items/event_schedules?%s", directusAddr, qp.Encode())
 	resp, _, err := util.MakeRequest("GET", u, nil, token)
@@ -458,31 +464,31 @@ func AttachScheduleToEvents(events []Event, choseDate, ed, directusAddr, token s
 	defer resp.Body.Close()
 
 	var payload struct {
-		Data []map[string]interface{} `json:"data"`
+		Data []map[string]any `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		util.LOGGER.Error("AttachScheduleToEvents: decode error", "error", err)
 		return events
 	}
 
-	// Gom theo event_id (Directus có thể trả event_id dạng string hoặc object)
-	scheduleMap := make(map[string][]map[string]interface{})
+	// Group in event ID
+	scheduleMap := make(map[string][]map[string]any)
 	for _, s := range payload.Data {
 		if id, ok := s["event_id"].(string); ok {
 			scheduleMap[id] = append(scheduleMap[id], s)
 			continue
 		}
-		if obj, ok := s["event_id"].(map[string]interface{}); ok {
+		if obj, ok := s["event_id"].(map[string]any); ok {
 			if id, ok := obj["id"].(string); ok {
 				scheduleMap[id] = append(scheduleMap[id], s)
 			}
 		}
 	}
 
-	// Gắn lại start_time/end_time từ schedules (đã lọc nếu có choseDate)
+	// Attach start/end time from schedules
 	for i, e := range events {
 		if list, ok := scheduleMap[e.ID]; ok && len(list) > 0 {
-			// đã sort theo start_time nên list[0] là sớm nhất (trong khoảng nếu có filter)
+			// Since it's sorted, list[0] is the earliest in range
 			if st, ok := list[0]["start_time"].(string); ok {
 				events[i].StartTime = st
 			}
@@ -490,7 +496,7 @@ func AttachScheduleToEvents(events []Event, choseDate, ed, directusAddr, token s
 				events[i].EndTime = et
 			}
 		} else {
-			// không có schedule khớp (đặc biệt khi có filter) → để trống để tránh hiểu lầm
+			// No schedule match, leave empty
 			if choseDate != "" {
 				events[i].StartTime = ""
 				events[i].EndTime = ""
