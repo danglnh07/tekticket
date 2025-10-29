@@ -78,18 +78,8 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 		offset = 0
 	}
 
-	// ---- Chuẩn hoá ngày chose_date (nếu user chỉ nhập YYYY-MM-DD) ----
-	normalizeChoseDate := func(d string) string {
-		if d == "" {
-			return ""
-		}
-		if strings.Contains(d, "T") { // đã là ISO đầy đủ
-			return d
-		}
-		// Chuyển thành đầu ngày UTC (tùy hệ thống có thể muốn kèm cả cuối ngày)
-		return d + "T00:00:00Z"
-	}
-	normalizedChoseDate := normalizeChoseDate(choseDate)
+    // ---- Chuẩn hoá ngày chose_date (nếu user chỉ nhập YYYY-MM-DD) ----
+    normalizedChoseDate := util.NormalizeChoseDate(choseDate)
 
 	// Debug
 	util.LOGGER.Info("Date normalization",
@@ -120,26 +110,34 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 			url.QueryEscape(filterStr),
 		)
 
-		resp1, _, err1 := util.MakeRequest("GET", scheduleURL, nil, server.config.DirectusStaticToken)
-		if err1 == nil && resp1 != nil {
-			defer resp1.Body.Close()
-			var schRes struct {
-				Data []struct {
-					EventID struct {
-						ID string `json:"id"`
-					} `json:"event_id"`
-				} `json:"data"`
-			}
-			if err := json.NewDecoder(resp1.Body).Decode(&schRes); err == nil {
-				seen := make(map[string]struct{})
-				for _, row := range schRes.Data {
-					id := row.EventID.ID
-					if id != "" {
-						if _, ok := seen[id]; !ok {
-							seen[id] = struct{}{}
-							eventIDs = append(eventIDs, id)
-						}
-					}
+		resp, statusCode, err := util.MakeRequest("GET", scheduleURL, nil, server.config.DirectusStaticToken)
+		if err != nil {
+			util.LOGGER.Error("GET /api/events: failed to get schedules from Directus", "error", err)
+			ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		var schRes struct {
+			Data []struct {
+				EventID struct {
+					ID string `json:"id"`
+				} `json:"event_id"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&schRes); err != nil {
+			util.LOGGER.Error("GET /api/events: failed to decode schedules response", "error", err)
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Internal server error"})
+			return
+		}
+
+		seen := make(map[string]struct{})
+		for _, row := range schRes.Data {
+			id := row.EventID.ID
+			if id != "" {
+				if _, ok := seen[id]; !ok {
+					seen[id] = struct{}{}
+					eventIDs = append(eventIDs, id)
 				}
 			}
 		}

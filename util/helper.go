@@ -95,3 +95,15 @@ func MakeRequest(method, url string, body map[string]any, token string) (*http.R
 func CreateImageLink(id string) string {
 	return fmt.Sprintf("http://localhost:8080/images/%s", id)
 }
+
+// NormalizeChoseDate ensures chose_date is in full ISO format.
+// If input is YYYY-MM-DD, it converts to the start of day in UTC (T00:00:00Z).
+func NormalizeChoseDate(d string) string {
+    if d == "" {
+        return ""
+    }
+    if strings.Contains(d, "T") { // already full ISO
+        return d
+    }
+    return d + "T00:00:00Z"
+}
