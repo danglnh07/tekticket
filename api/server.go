@@ -73,6 +73,8 @@ func (server *Server) RegisterHandler() {
 			auth.POST("/login", server.Login)
 			auth.POST("/logout", server.Logout)
 			auth.POST("/refresh", server.RefreshToken)
+			auth.POST("/password/request", server.SendResetPasswordRequest)
+			auth.POST("/password/reset", server.ResetPassword)
 		}
 
 		profile := api.Group("/profile")

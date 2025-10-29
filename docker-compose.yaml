@@ -16,6 +16,16 @@ services:
             DB_SSL: true
             WEBSOCKETS_ENABLED: "true"
 
+            # CORS Configuration
+            CORS_ENABLED: "true"
+            CORS_ORIGIN: "true"
+            # CORS_ORIGIN: "http://localhost:3000,http://localhost:8080"
+            CORS_METHODS: "GET,POST,PATCH,DELETE,PUT"
+            CORS_ALLOWED_HEADERS: "Content-Type,Authorization"
+            CORS_EXPOSED_HEADERS: "Content-Range"
+            CORS_CREDENTIALS: "true"
+            CORS_MAX_AGE: 86400
+
             # Configure Cloudinary as storage
             STORAGE_LOCATIONS: cloudinary
             STORAGE_CLOUDINARY_DRIVER: cloudinary

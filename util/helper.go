@@ -2,6 +2,10 @@ package util
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	cryprand "crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -92,4 +96,64 @@ func MakeRequest(method, url string, body map[string]any, token string) (*http.R
 // Generate the URL of image using its ID
 func CreateImageLink(id string) string {
 	return fmt.Sprintf("http://localhost:8080/images/%s", id)
+}
+
+// Encrypt encrypts plaintext using AES-256 GCM.
+func Encrypt(key, plaintext []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err = io.ReadFull(cryprand.Reader, nonce); err != nil {
+		return nil, err
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
+	return ciphertext, nil
+}
+
+// Decrypt decrypts ciphertext using AES-256 GCM.
+func Decrypt(key, ciphertext []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return nil, fmt.Errorf("ciphertext too short")
+	}
+
+	nonce, encryptedMessage := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, encryptedMessage, nil)
+	if err != nil {
+		return nil, err
+	}
+	return plaintext, nil
+}
+
+// Methods to encode a string using Base64 URL encoding
+func Encode(str string) string {
+	return base64.URLEncoding.EncodeToString([]byte(str))
+}
+
+// Method to decode a Base64 URL encoded string
+func Decode(str string) string {
+	data, err := base64.URLEncoding.DecodeString(str)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }

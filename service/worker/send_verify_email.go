@@ -22,7 +22,7 @@ type SendVerifyEmailPayload struct {
 const SendVerifyEmail = "send-verify-email"
 
 //go:embed verify_email.html
-var fs embed.FS
+var verifyFS embed.FS
 
 func (processor *RedisTaskProcessor) SendVerifyEmail(payload SendVerifyEmailPayload) error {
 	// Generate OTP
@@ -47,7 +47,7 @@ func (processor *RedisTaskProcessor) SendVerifyEmail(payload SendVerifyEmailPayl
 	}
 
 	// Prepare the HTML email body
-	tmpl, err := template.ParseFS(fs, "verify_email.html")
+	tmpl, err := template.ParseFS(verifyFS, "verify_email.html")
 	if err != nil {
 		return err
 	}

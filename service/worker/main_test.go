@@ -37,6 +37,9 @@ func TestMain(m *testing.M) {
 
 	mailService := notify.NewEmailService(os.Getenv("EMAIL"), os.Getenv("APP_PASSWORD"))
 
-	processor = NewRedisTaskProcessor(asynq.RedisClientOpt{Addr: os.Getenv("REDIS_ADDR")}, queries, mailService)
+	config := &util.Config{
+		FrontendURL: "http://localhost:3000",
+	}
+	processor = NewRedisTaskProcessor(asynq.RedisClientOpt{Addr: os.Getenv("REDIS_ADDR")}, queries, mailService, config)
 	os.Exit(m.Run())
 }
