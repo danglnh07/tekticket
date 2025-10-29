@@ -80,6 +80,24 @@ func (server *Server) RegisterHandler() {
 			profile.GET("", server.GetProfile)
 			profile.PUT("", server.UpdateProfile)
 		}
+
+		// Events routes
+		events := api.Group("/events")
+		{
+			events.GET("/tickets/:event_id", server.GetEventTickets)
+		}
+
+		// Seat zones routes
+		seatZones := api.Group("/seat-zones")
+		{
+			seatZones.GET("/:seat_zone_id", server.GetSeats)
+		}
+
+		// Memberships routes
+		memberships := api.Group("/memberships")
+		{
+			memberships.GET("/:user_id", server.GetUserMembership)
+		}
 	}
 
 	// Swagger docs
