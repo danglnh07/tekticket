@@ -82,6 +82,12 @@ func (server *Server) RegisterHandler() {
 			profile.GET("", server.GetProfile)
 			profile.PUT("", server.UpdateProfile)
 		}
+
+		events := api.Group("/events")
+		{
+			events.GET("", server.GetEvents)
+			events.GET("/:id", server.GetEventByID)
+		}
 	}
 
 	// Swagger docs
@@ -89,10 +95,7 @@ func (server *Server) RegisterHandler() {
 
 	// Static handler
 	server.router.GET("/images/:id", func(ctx *gin.Context) {
-		// Get asset ID
 		id := ctx.Param("id")
-
-		// Get the image
 		resp, status, err := util.MakeRequest("GET", server.config.DirectusAddr+"/assets/"+id, nil, server.config.DirectusStaticToken)
 		if err != nil {
 			util.LOGGER.Error("GET /images/:id: failed to get assets", "error", err)
@@ -100,7 +103,6 @@ func (server *Server) RegisterHandler() {
 			return
 		}
 
-		// Copy content type and body
 		ctx.Header("Content-Type", resp.Header.Get("Content-Type"))
 		io.Copy(ctx.Writer, resp.Body)
 	})
