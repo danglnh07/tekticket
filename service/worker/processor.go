@@ -25,6 +25,9 @@ type RedisTaskProcessor struct {
 
 	// Dependencies
 	mailService notify.MailService
+
+	// Config
+	config *util.Config
 }
 
 // Constructor method for Redis task processor
@@ -32,11 +35,13 @@ func NewRedisTaskProcessor(
 	redisOpts asynq.RedisClientOpt,
 	queries *db.Queries,
 	mailService notify.MailService,
+	config *util.Config,
 ) TaskProcessor {
 	return &RedisTaskProcessor{
 		server:      asynq.NewServer(redisOpts, asynq.Config{}),
 		queries:     queries,
 		mailService: mailService,
+		config:      config,
 	}
 }
 
@@ -61,6 +66,25 @@ func (processor *RedisTaskProcessor) Start() error {
 
 		util.LOGGER.Info("task success", "task", SendVerifyEmail)
 		return nil
+	})
+
+	mux.HandleFunc(SendResetPassword, func(ctx context.Context, t *asynq.Task) error {
+		// Unmarshal payload
+		var payload SendResetPasswordPayload
+		if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+			util.LOGGER.Error("failed to process task", "task", SendResetPassword, "error", err)
+			return err
+		}
+
+		err := processor.SendResetPassword(payload)
+		if err != nil {
+			util.LOGGER.Error("failed to process task", "task", SendResetPassword, "error", err)
+			return err
+		}
+
+		util.LOGGER.Info("task success", "task", SendResetPassword)
+		return nil
+
 	})
 
 	return processor.server.Start(mux)
