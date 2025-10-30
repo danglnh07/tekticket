@@ -38,7 +38,7 @@ func TestMain(m *testing.M) {
 	mailService := notify.NewEmailService(os.Getenv("EMAIL"), os.Getenv("APP_PASSWORD"))
 
 	config := &util.Config{
-		FrontendURL: "http://localhost:3000",
+		ResetPasswordURL: "http://localhost:3000", // Just some dump value, we only care about the token in this test
 	}
 	processor = NewRedisTaskProcessor(asynq.RedisClientOpt{Addr: os.Getenv("REDIS_ADDR")}, queries, mailService, config)
 	os.Exit(m.Run())

@@ -31,7 +31,7 @@ func (processor *RedisTaskProcessor) SendResetPassword(payload SendResetPassword
 	token := util.Encode(string(encrypt))
 
 	// Create reset link
-	link := fmt.Sprintf("%s?token=%s", processor.config.FrontendURL, token)
+	link := fmt.Sprintf("%s?token=%s", processor.config.ResetPasswordURL, token)
 	payload.ResetLink = link
 	util.LOGGER.Info("Link", "val", link)
 
