@@ -63,6 +63,7 @@ type Event struct {
 // @Failure      400  {object}  ErrorResponse       "Invalid query parameters"
 // @Failure      401  {object}  ErrorResponse       "Unauthorized access"
 // @Failure      500  {object}  ErrorResponse       "Internal server error or Directus failure"
+// @Security BearerAuth
 // @Router       /api/events [get]
 func (server *Server) GetEvents(ctx *gin.Context) {
 	// Get user access token
@@ -247,6 +248,7 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 // @Failure      400  {object}  ErrorResponse     "Invalid or missing event ID"
 // @Failure      401  {object}  ErrorResponse     "Unauthorized access"
 // @Failure      500  {object}  ErrorResponse     "Internal server error or failed to communicate with Directus"
+// @Security BearerAuth
 // @Router       /api/events/{id} [get]
 func (server *Server) GetEventByID(ctx *gin.Context) {
 	// Get access token
@@ -525,6 +527,7 @@ type CategoryListResponse struct {
 // @Success      200  {object}  CategoryListResponse  "List of categories retrieved successfully"
 // @Failure      401  {object}  ErrorResponse         "Unauthorized access"
 // @Failure      500  {object}  ErrorResponse         "Internal server error"
+// @Security BearerAuth
 // @Router       /api/events/categories [get]
 func (server *Server) GetCategories(ctx *gin.Context) {
 	// Get access token

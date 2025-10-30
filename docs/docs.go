@@ -398,6 +398,11 @@ const docTemplate = `{
         },
         "/api/events": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns a paginated list of events with optional filters for search, category, location, date, and status.\nIf ` + "`" + `chose_date` + "`" + ` is provided, only events that are active during that date will be returned.",
                 "consumes": [
                     "application/json"
@@ -489,6 +494,11 @@ const docTemplate = `{
         },
         "/api/events/categories": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns a list of all available event categories from the database.",
                 "consumes": [
                     "application/json"
@@ -524,6 +534,11 @@ const docTemplate = `{
         },
         "/api/events/{id}": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns detailed information about a specific event, including category, images, and schedule data.",
                 "consumes": [
                     "application/json"

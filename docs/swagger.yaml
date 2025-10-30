@@ -494,6 +494,8 @@ paths:
           description: Internal server error or Directus failure
           schema:
             $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Retrieve list of events
       tags:
       - Events
@@ -528,6 +530,8 @@ paths:
           description: Internal server error or failed to communicate with Directus
           schema:
             $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Retrieve a single event by ID
       tags:
       - Events
@@ -551,6 +555,8 @@ paths:
           description: Internal server error
           schema:
             $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Retrieve all categories
       tags:
       - Events
