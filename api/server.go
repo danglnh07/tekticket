@@ -86,6 +86,7 @@ func (server *Server) RegisterHandler() {
 		{
 			events.GET("", server.GetEvents)
 			events.GET("/:id", server.GetEventByID)
+			events.GET("/categories", server.GetCategories)
 		}
 	}
 

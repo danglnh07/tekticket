@@ -412,13 +412,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Bearer token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Search by event title or description",
                         "name": "search",
                         "in": "query"
@@ -494,6 +487,41 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/events/categories": {
+            "get": {
+                "description": "Returns a list of all available event categories from the database.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Retrieve all categories",
+                "responses": {
+                    "200": {
+                        "description": "List of categories retrieved successfully",
+                        "schema": {
+                            "$ref": "#/definitions/api.CategoryListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized access",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/events/{id}": {
             "get": {
                 "description": "Returns detailed information about a specific event, including category, images, and schedule data.",
@@ -508,13 +536,6 @@ const docTemplate = `{
                 ],
                 "summary": "Retrieve a single event by ID",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Bearer token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Event ID",
@@ -648,6 +669,28 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "api.Category": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.CategoryListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.Category"
+                    }
+                }
+            }
+        },
         "api.ErrorResponse": {
             "type": "object",
             "properties": {
