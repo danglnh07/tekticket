@@ -18,6 +18,12 @@ import (
  * 3.2. If request success, an additional field will be return: 'result', which can have whatever value
  */
 
+// Default scope and language set. You can override it directly by providing different value to the method's parameters
+var (
+	SCOPE = map[string]any{"type": "default"}
+	LANG  = "en"
+)
+
 // Telegram chatbot implementation
 type Chatbot struct {
 	server  string
@@ -124,7 +130,7 @@ func (bot *Chatbot) SetWebhook(url string) error {
 
 // Delete a webhook
 func (bot *Chatbot) DeleteWebhook() error {
-	return bot.Post("deleteWebhook", nil, nil)
+	return bot.Get("deleteWebhook", nil)
 }
 
 // Get the current bot information
@@ -169,4 +175,46 @@ func (bot *Chatbot) DeleteCommands(scope map[string]any, lang string) error {
 		"scope":         scope,
 		"language_code": lang,
 	}, nil)
+}
+
+// Setup the bare requirement for this bot to run, include setting the webhook and initial commands
+func (bot *Chatbot) Setup() error {
+	// Get webhook
+	webhook, err := bot.GetWebhook()
+	if err != nil {
+		return err
+	}
+
+	// If the webhook URL different from the currently set, override it
+	if webhook.URL != bot.webhook {
+		if err := bot.DeleteWebhook(); err != nil {
+			return err
+		}
+
+		if err := bot.SetWebhook(bot.webhook); err != nil {
+			return err
+		}
+	}
+
+	// Get all commands
+	commands, err := bot.GetCommands(SCOPE, LANG)
+	if err != nil {
+		return err
+	}
+
+	// Check if the command /start exists
+	for _, command := range commands {
+		// If found, return here, nothing more to set
+		if command.Command == "/start" {
+			return nil
+		}
+	}
+
+	// Set the start command, while keeping other existing commands untouch
+	bot.SetCommands([]Command{{
+		Command:     "/start",
+		Description: "Start using out chatbot and receive any notification, by simply typing /start <YOUR_EMAIL>",
+	}}, SCOPE, LANG)
+
+	return nil
 }
