@@ -1,4 +1,18 @@
 definitions:
+  api.Category:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  api.CategoryListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/api.Category'
+        type: array
+    type: object
   api.ErrorResponse:
     properties:
       error:
@@ -429,11 +443,6 @@ paths:
         Returns a paginated list of events with optional filters for search, category, location, date, and status.
         If `chose_date` is provided, only events that are active during that date will be returned.
       parameters:
-      - description: Bearer token
-        in: header
-        name: Authorization
-        required: true
-        type: string
       - description: Search by event title or description
         in: query
         name: search
@@ -485,6 +494,8 @@ paths:
           description: Internal server error or Directus failure
           schema:
             $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Retrieve list of events
       tags:
       - Events
@@ -495,11 +506,6 @@ paths:
       description: Returns detailed information about a specific event, including
         category, images, and schedule data.
       parameters:
-      - description: Bearer token
-        in: header
-        name: Authorization
-        required: true
-        type: string
       - description: Event ID
         in: path
         name: id
@@ -524,7 +530,34 @@ paths:
           description: Internal server error or failed to communicate with Directus
           schema:
             $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Retrieve a single event by ID
+      tags:
+      - Events
+  /api/events/categories:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of all available event categories from the database.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of categories retrieved successfully
+          schema:
+            $ref: '#/definitions/api.CategoryListResponse'
+        "401":
+          description: Unauthorized access
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Retrieve all categories
       tags:
       - Events
   /api/profile:

@@ -51,7 +51,6 @@ type Event struct {
 // @Tags         Events
 // @Accept       json
 // @Produce      json
-// @Param        Authorization  header    string  true   "Bearer token"
 // @Param        search          query     string  false  "Search by event title or description"
 // @Param        category        query     string  false  "Filter by category ID"
 // @Param        location        query     string  false  "Filter by location"
@@ -64,6 +63,7 @@ type Event struct {
 // @Failure      400  {object}  ErrorResponse       "Invalid query parameters"
 // @Failure      401  {object}  ErrorResponse       "Unauthorized access"
 // @Failure      500  {object}  ErrorResponse       "Internal server error or Directus failure"
+// @Security BearerAuth
 // @Router       /api/events [get]
 func (server *Server) GetEvents(ctx *gin.Context) {
 	// Get user access token
@@ -243,12 +243,12 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 // @Tags         Events
 // @Accept       json
 // @Produce      json
-// @Param        Authorization  header    string  true   "Bearer token"
 // @Param        id              path      string  true   "Event ID"
 // @Success      200  {object}  Event             "Event details retrieved successfully"
 // @Failure      400  {object}  ErrorResponse     "Invalid or missing event ID"
 // @Failure      401  {object}  ErrorResponse     "Unauthorized access"
 // @Failure      500  {object}  ErrorResponse     "Internal server error or failed to communicate with Directus"
+// @Security BearerAuth
 // @Router       /api/events/{id} [get]
 func (server *Server) GetEventByID(ctx *gin.Context) {
 	// Get access token
@@ -505,4 +505,78 @@ func AttachScheduleToEvents(events []Event, choseDate, ed, directusAddr, token s
 	}
 
 	return events
+}
+
+// Category represents a category from the database
+type Category struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// CategoryListResponse represents the response for list categories
+type CategoryListResponse struct {
+	Data []Category `json:"data"`
+}
+
+// GetCategories godoc
+// @Summary      Retrieve all categories
+// @Description  Returns a list of all available event categories from the database.
+// @Tags         Events
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  CategoryListResponse  "List of categories retrieved successfully"
+// @Failure      401  {object}  ErrorResponse         "Unauthorized access"
+// @Failure      500  {object}  ErrorResponse         "Internal server error"
+// @Security BearerAuth
+// @Router       /api/events/categories [get]
+func (server *Server) GetCategories(ctx *gin.Context) {
+	// Get access token
+	token := server.GetToken(ctx)
+	if token == "" {
+		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
+		return
+	}
+
+	// Build the query URL
+	queryParams := url.Values{}
+	queryParams.Add("fields", "id,name")
+	queryParams.Add("sort", "name")
+	queryParams.Add("limit", "-1")
+
+	directusURL := fmt.Sprintf("%s/items/categories?%s", server.config.DirectusAddr, queryParams.Encode())
+
+	// Make request to Directus
+	resp, statusCode, err := util.MakeRequest("GET", directusURL, nil, token)
+	if err != nil {
+		util.LOGGER.Error("GET /api/events/categories: failed to get categories from Directus", "error", err)
+		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Parse response from Directus request
+	var directusResp struct {
+		Data []map[string]any `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
+		util.LOGGER.Error("GET /api/events/categories: failed to decode Directus response", "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Internal server error"})
+		return
+	}
+
+	// Map result
+	categories := make([]Category, 0, len(directusResp.Data))
+	for _, item := range directusResp.Data {
+		category := Category{}
+		if id, ok := item["id"].(string); ok {
+			category.ID = id
+		}
+		if name, ok := item["name"].(string); ok {
+			category.Name = name
+		}
+		categories = append(categories, category)
+	}
+
+	ctx.JSON(http.StatusOK, CategoryListResponse{Data: categories})
 }

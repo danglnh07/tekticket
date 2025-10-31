@@ -86,6 +86,20 @@ func (server *Server) RegisterHandler() {
 		{
 			events.GET("", server.GetEvents)
 			events.GET("/:id", server.GetEventByID)
+			events.GET("/categories", server.GetCategories)
+      events.GET("/tickets/:event_id", server.GetEventTickets)
+    }
+
+		// Seat zones routes
+		seatZones := api.Group("/seat-zones")
+		{
+			seatZones.GET("/:seat_zone_id", server.GetSeats)
+		}
+
+		// Memberships routes
+		memberships := api.Group("/memberships")
+		{
+			memberships.GET("/:user_id", server.GetUserMembership)
 		}
 	}
 

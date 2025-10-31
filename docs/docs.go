@@ -398,6 +398,11 @@ const docTemplate = `{
         },
         "/api/events": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns a paginated list of events with optional filters for search, category, location, date, and status.\nIf ` + "`" + `chose_date` + "`" + ` is provided, only events that are active during that date will be returned.",
                 "consumes": [
                     "application/json"
@@ -410,13 +415,6 @@ const docTemplate = `{
                 ],
                 "summary": "Retrieve list of events",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Bearer token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Search by event title or description",
@@ -494,8 +492,53 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/events/categories": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a list of all available event categories from the database.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Retrieve all categories",
+                "responses": {
+                    "200": {
+                        "description": "List of categories retrieved successfully",
+                        "schema": {
+                            "$ref": "#/definitions/api.CategoryListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized access",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/events/{id}": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns detailed information about a specific event, including category, images, and schedule data.",
                 "consumes": [
                     "application/json"
@@ -508,13 +551,6 @@ const docTemplate = `{
                 ],
                 "summary": "Retrieve a single event by ID",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Bearer token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Event ID",
@@ -648,6 +684,28 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "api.Category": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.CategoryListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.Category"
+                    }
+                }
+            }
+        },
         "api.ErrorResponse": {
             "type": "object",
             "properties": {
