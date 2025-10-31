@@ -20,8 +20,10 @@ import (
 
 // Default scope and language set. You can override it directly by providing different value to the method's parameters
 var (
-	SCOPE = map[string]any{"type": "default"}
-	LANG  = "en"
+	SCOPE       = map[string]any{"type": "default"}
+	LANG        = "en"
+	FORMAT_MODE = "HTML"   // This allow for simple formatting, see more at: https://core.telegram.org/bots/api#formatting-options
+	CHAT_ACTION = "typing" // Indicate what happen in the bot side, see more at: https://core.telegram.org/bots/api#sendchataction
 )
 
 // Telegram chatbot implementation
@@ -174,6 +176,23 @@ func (bot *Chatbot) DeleteCommands(scope map[string]any, lang string) error {
 	return bot.Post("deleteMyCommands", map[string]any{
 		"scope":         scope,
 		"language_code": lang,
+	}, nil)
+}
+
+// Send chat action
+func (bot *Chatbot) SendChatAction(chatID int, action string) error {
+	return bot.Post("sendChatAction", map[string]any{
+		"chat_id": chatID,
+		"action":  action,
+	}, nil)
+}
+
+// Send text message to a chat
+func (bot *Chatbot) SendMessage(chatID int, text string) error {
+	return bot.Post("sendMessage", map[string]any{
+		"chat_id":    chatID,
+		"text":       text,
+		"parse_mode": FORMAT_MODE,
 	}, nil)
 }
 
