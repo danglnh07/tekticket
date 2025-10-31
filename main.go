@@ -45,7 +45,6 @@ func main() {
 
 	// Start the background server in separate goroutine (since it's will block the main thread)
 	go StartBackgroundProcessor(asynq.RedisClientOpt{Addr: config.RedisAddr}, queries, mailService)
-
 	// Start server
 	server := api.NewServer(queries, distributor, mailService, cld, config)
 	if err := server.Start(); err != nil {

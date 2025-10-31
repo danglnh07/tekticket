@@ -80,6 +80,12 @@ func (server *Server) RegisterHandler() {
 			profile.GET("", server.GetProfile)
 			profile.PUT("", server.UpdateProfile)
 		}
+
+		mybooking := api.Group("/mybooking")
+		{
+
+			mybooking.GET("/:id", server.GetMyOrder)
+		}
 	}
 
 	// Swagger docs
