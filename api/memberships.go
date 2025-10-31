@@ -99,28 +99,17 @@ func (server *Server) GetUserMembership(ctx *gin.Context) {
 	directusURL := fmt.Sprintf("%s/items/user_membership_logs/?%s", server.config.DirectusAddr, queryParams.Encode())
 
 	// Make request to Directus
-	resp, status, err := util.MakeRequest("GET", directusURL, nil, token)
+	var logs []UserMembershipLog
+	status, err := util.MakeRequest("GET", directusURL, nil, token, &logs)
 	if err != nil {
 		util.LOGGER.Error("GET api/memberships/:id: failed to make request to Directus", "error", err)
 		ctx.JSON(status, ErrorResponse{err.Error()})
 		return
 	}
-	defer resp.Body.Close()
-
-	// Parse Directus response
-	var directusResp struct {
-		Data []UserMembershipLog `json:"data"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
-		util.LOGGER.Error("GET /api/memberships/:id: failed to parse Directus response", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
-		return
-	}
 
 	// When an account is created, their would be a log created for them, so we can assume that at least 1 record is returned
 	result := MembershipResponse{
-		Points: directusResp.Data[0].ResultingPoint,
+		Points: logs[0].ResultingPoint,
 	}
 
 	// Get the list of all membership to determine the current user rank and privilege
@@ -176,26 +165,14 @@ func (server *Server) listMemberships(ctx *gin.Context) []MembershipTier {
 
 	// Get the list of all memberships. It should be a short list, so we don't need to provide any paging here
 	url := fmt.Sprintf("%s/items/memberships?filter[status][_eq]=published&sort=base_point", server.config.DirectusAddr)
-	resp, status, err := util.MakeRequest("GET", url, nil, token)
+	var memberships []MembershipTier
+	status, err := util.MakeRequest("GET", url, nil, token, &memberships)
 	if err != nil {
 		util.LOGGER.Error(
 			fmt.Sprintf("%s %s: failed to get the list of all memberships", ctx.Request.Method, ctx.FullPath()), "error", err)
 		ctx.JSON(status, ErrorResponse{err.Error()})
 		return nil
 	}
-	defer resp.Body.Close()
 
-	// Parse Directus response
-	var directusResp struct {
-		Data []MembershipTier `json:"data"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
-		util.LOGGER.Error(
-			fmt.Sprintf("%s %s: failed to get the list of all memberships", ctx.Request.Method, ctx.FullPath()), "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
-		return nil
-	}
-
-	return directusResp.Data
+	return memberships
 }

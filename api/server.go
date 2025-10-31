@@ -1,13 +1,13 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"tekticket/db"
 	_ "tekticket/docs"
+	"tekticket/service/bot"
 	"tekticket/service/notify"
 	"tekticket/service/uploader"
 	"tekticket/service/worker"
@@ -32,6 +32,7 @@ type Server struct {
 	distributor   worker.TaskDistributor
 	mailService   notify.MailService
 	uploadService *uploader.CloudinaryService
+	bot           *bot.Chatbot
 	config        *util.Config
 }
 
@@ -41,6 +42,7 @@ func NewServer(
 	distributor worker.TaskDistributor,
 	mailService notify.MailService,
 	uploadService *uploader.CloudinaryService,
+	bot *bot.Chatbot,
 	config *util.Config,
 ) *Server {
 	return &Server{
@@ -49,6 +51,7 @@ func NewServer(
 		distributor:   distributor,
 		uploadService: uploadService,
 		mailService:   mailService,
+		bot:           bot,
 		config:        config,
 	}
 }
@@ -99,6 +102,12 @@ func (server *Server) RegisterHandler() {
 			memberships.GET("", server.ListMemberships)
 			memberships.GET("/:id", server.GetUserMembership)
 		}
+
+		// Webhook handler
+		webhook := api.Group("/webhook")
+		{
+			webhook.POST("/telegram", server.TelegramWebhook)
+		}
 	}
 
 	// Swagger docs
@@ -107,10 +116,27 @@ func (server *Server) RegisterHandler() {
 	// Static handler
 	server.router.GET("/images/:id", func(ctx *gin.Context) {
 		id := ctx.Param("id")
-		resp, status, err := util.MakeRequest("GET", server.config.DirectusAddr+"/assets/"+id, nil, server.config.DirectusStaticToken)
+
+		// Since we need the Response object for redirecting, so we'll manually make request here, not using the util.MakeRequest
+		url := fmt.Sprintf("%s/assets/%s", server.config.DirectusAddr, id)
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			util.LOGGER.Error("GET /images/:id: failed to create request", "error", err)
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+			return
+
+		}
+		req.Header.Set("Authorization", "Bearer "+server.config.DirectusStaticToken)
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			util.LOGGER.Error("GET /images/:id: failed to get assets", "error", err)
-			ctx.JSON(status, ErrorResponse{err.Error()})
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			ctx.JSON(resp.StatusCode, ErrorResponse{resp.Status})
 			return
 		}
 
@@ -160,11 +186,13 @@ func (server *Server) UploadImage(ctx *gin.Context, image string) (string, error
 
 	// Upload the image into Directus
 	url := server.config.DirectusAddr + "/files/import"
-	directusResp, status, err := util.MakeRequest(
+	var imageResp ImageResponse
+	status, err := util.MakeRequest(
 		"POST",
 		url,
 		map[string]any{"url": cloudResp.SecureURL},
 		server.config.DirectusStaticToken,
+		&imageResp,
 	)
 
 	if err != nil {
@@ -173,16 +201,5 @@ func (server *Server) UploadImage(ctx *gin.Context, image string) (string, error
 		return "", err
 	}
 
-	// Decode response from Directus
-	var diretusResult struct {
-		Data ImageResponse `json:"data"`
-	}
-
-	if err := json.NewDecoder(directusResp.Body).Decode(&diretusResult); err != nil {
-		util.LOGGER.Error(fmt.Sprintf("%s %s: failed to decode directus response", method, path), "error", err)
-		ctx.JSON(status, ErrorResponse{err.Error()})
-		return "", err
-	}
-
-	return diretusResult.Data.ID, nil
+	return imageResp.ID, nil
 }

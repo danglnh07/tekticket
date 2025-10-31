@@ -53,7 +53,11 @@ func GenerateRandomOTP() string {
 }
 
 // Helper: make request to Directus
-func MakeRequest(method, url string, body map[string]any, token string) (*http.Response, int, error) {
+type DirectusResp struct {
+	Data any `json:"data"`
+}
+
+func MakeRequest(method, url string, body map[string]any, token string, result any) (int, error) {
 	var (
 		req *http.Request
 		err error
@@ -63,16 +67,16 @@ func MakeRequest(method, url string, body map[string]any, token string) (*http.R
 		// build body
 		data, err := json.Marshal(body)
 		if err != nil {
-			return nil, http.StatusInternalServerError, err
+			return http.StatusInternalServerError, err
 		}
 		req, err = http.NewRequest(method, url, bytes.NewBuffer(data))
 		if err != nil {
-			return nil, http.StatusInternalServerError, err
+			return http.StatusInternalServerError, err
 		}
 	} else {
 		req, err = http.NewRequest(method, url, nil)
 		if err != nil {
-			return nil, http.StatusInternalServerError, err
+			return http.StatusInternalServerError, err
 		}
 	}
 
@@ -83,16 +87,22 @@ func MakeRequest(method, url string, body map[string]any, token string) (*http.R
 	// Make request to Directus API
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, http.StatusInternalServerError, err
+		return http.StatusInternalServerError, err
 	}
 
 	// Check if status code is success
 	if 200 > resp.StatusCode || resp.StatusCode >= 300 {
 		message, _ := io.ReadAll(resp.Body)
-		return nil, resp.StatusCode, fmt.Errorf("response status not ok: %s", string(message)+" "+resp.Status)
+		return resp.StatusCode, fmt.Errorf("response status not ok: %s", string(message)+" "+resp.Status)
 	}
 
-	return resp, resp.StatusCode, nil
+	// Parse Directus response
+	directusResp := DirectusResp{Data: result}
+	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	return resp.StatusCode, nil
 }
 
 // Generate the URL of image using its ID
@@ -103,13 +113,13 @@ func CreateImageLink(id string) string {
 // NormalizeChoseDate ensures chose_date is in full ISO format.
 // If input is YYYY-MM-DD, it converts to the start of day in UTC (T00:00:00Z).
 func NormalizeChoseDate(d string) string {
-    if d == "" {
-        return ""
-    }
-    if strings.Contains(d, "T") { // already full ISO
-        return d
-    }
-    return d + "T00:00:00Z"
+	if d == "" {
+		return ""
+	}
+	if strings.Contains(d, "T") { // already full ISO
+		return d
+	}
+	return d + "T00:00:00Z"
 }
 
 // Encrypt encrypts plaintext using AES-256 GCM.

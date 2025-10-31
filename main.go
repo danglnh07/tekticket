@@ -5,9 +5,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"tekticket/api"
 	"tekticket/db"
+	"tekticket/service/bot"
 	"tekticket/service/notify"
 	"tekticket/service/uploader"
 	"tekticket/service/worker"
@@ -48,12 +50,21 @@ func main() {
 		os.Exit(1)
 	}
 	mailService := notify.NewEmailService(config.Email, config.AppPassword)
+	bot, err := bot.NewChatbot(config.TelegramBotToken, fmt.Sprintf("%s/api/webhook/telegram", config.ServerDomain))
+	if err != nil {
+		util.LOGGER.Error("Failed to initialize Telegram chat bot", "error", err)
+		os.Exit(1)
+	}
+	if err := bot.Setup(); err != nil {
+		util.LOGGER.Error("Failed to setup chatbot", "error", err)
+		os.Exit(1)
+	}
 
 	// Start the background server in separate goroutine (since it's will block the main thread)
 	go StartBackgroundProcessor(asynq.RedisClientOpt{Addr: config.RedisAddr}, queries, mailService, config)
 
 	// Start server
-	server := api.NewServer(queries, distributor, mailService, cld, config)
+	server := api.NewServer(queries, distributor, mailService, cld, bot, config)
 	if err := server.Start(); err != nil {
 		util.LOGGER.Error("Failed to start server", "error", err)
 		os.Exit(1)

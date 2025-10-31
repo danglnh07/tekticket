@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -165,49 +164,38 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 	directusURL := fmt.Sprintf("%s/items/events/%s?%s", server.config.DirectusAddr, id, queryParams.Encode())
 
 	// Make request to Directus
-	resp, statusCode, err := util.MakeRequest("GET", directusURL, nil, token)
+	var directusResult directusEventDetail
+	statusCode, err := util.MakeRequest("GET", directusURL, nil, token, &directusResult)
 	if err != nil {
 		util.LOGGER.Error("GET /api/events/:id: failed to get event from Directus", "error", err, "id", id)
 		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
 		return
 	}
-	defer resp.Body.Close()
-
-	// Parse response from Directus request
-	var directusResp struct {
-		Data directusEventDetail `json:"data"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
-		util.LOGGER.Error("GET /api/events/:id: failed to decode Directus response", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Internal server error"})
-		return
-	}
 
 	// Check if event is published
-	if directusResp.Data.Status != "published" {
+	if directusResult.Status != "published" {
 		ctx.JSON(http.StatusNotFound, ErrorResponse{Message: "Event not found"})
 		return
 	}
 
 	// Filter and transform the data
 	eventDetail := EventDetail{
-		ID:             directusResp.Data.ID,
-		Name:           directusResp.Data.Name,
-		Description:    directusResp.Data.Description,
-		Address:        directusResp.Data.Address,
-		City:           directusResp.Data.City,
-		Country:        directusResp.Data.Country,
-		Slug:           directusResp.Data.Slug,
-		PreviewImage:   directusResp.Data.PreviewImage,
-		Creator:        directusResp.Data.Creator,
-		EventSchedules: directusResp.Data.EventSchedules,
+		ID:             directusResult.ID,
+		Name:           directusResult.Name,
+		Description:    directusResult.Description,
+		Address:        directusResult.Address,
+		City:           directusResult.City,
+		Country:        directusResult.Country,
+		Slug:           directusResult.Slug,
+		PreviewImage:   directusResult.PreviewImage,
+		Creator:        directusResult.Creator,
+		EventSchedules: directusResult.EventSchedules,
 		SeatZones:      make([]SeatZone, 0),
 		Tickets:        make([]Ticket, 0),
 	}
 
 	// Filter seat_zones - only published, and initialize seats array
-	for _, zone := range directusResp.Data.SeatZones {
+	for _, zone := range directusResult.SeatZones {
 		if zone.Status == "published" {
 			seatZone := zone.SeatZone
 			// Ensure seats is empty array, not null
@@ -219,7 +207,7 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 	}
 
 	// Filter tickets - only published, and initialize ticket_selling_schedules array
-	for _, ticket := range directusResp.Data.Tickets {
+	for _, ticket := range directusResult.Tickets {
 		if ticket.Status == "published" {
 			t := ticket.Ticket
 			// Ensure ticket_selling_schedules is empty array, not null
@@ -231,8 +219,8 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 	}
 
 	// Handle category - only if published, otherwise return empty struct
-	if directusResp.Data.Category.Status == "published" {
-		eventDetail.Category = directusResp.Data.Category.Category
+	if directusResult.Category.Status == "published" {
+		eventDetail.Category = directusResult.Category.Category
 	} else {
 		eventDetail.Category = Category{}
 	}
@@ -383,29 +371,18 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 	directusURL := fmt.Sprintf("%s/items/events?%s", server.config.DirectusAddr, queryParams.Encode())
 
 	// Make request to Directus
-	resp, statusCode, err := util.MakeRequest("GET", directusURL, nil, token)
+	var directusResult []directusEventInfo
+	statusCode, err := util.MakeRequest("GET", directusURL, nil, token, &directusResult)
 	if err != nil {
 		util.LOGGER.Error("GET /api/events: failed to get events from Directus", "error", err)
 		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
-		return
-	}
-	defer resp.Body.Close()
-
-	// Parse response
-	var directusResp struct {
-		Data []directusEventInfo `json:"data"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
-		util.LOGGER.Error("GET /api/events: failed to decode Directus response", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Internal server error"})
 		return
 	}
 
 	// Transform and filter data
 	events := make([]EventInfo, 0)
 
-	for _, event := range directusResp.Data {
+	for _, event := range directusResult {
 		// Skip if event is not published (redundant check)
 		if event.Status != "published" {
 			continue
@@ -537,24 +514,13 @@ func (server *Server) GetCategories(ctx *gin.Context) {
 	directusURL := fmt.Sprintf("%s/items/categories?%s", server.config.DirectusAddr, queryParams.Encode())
 
 	// Make request to Directus
-	resp, statusCode, err := util.MakeRequest("GET", directusURL, nil, token)
+	var categories []Category
+	statusCode, err := util.MakeRequest("GET", directusURL, nil, token, &categories)
 	if err != nil {
 		util.LOGGER.Error("GET /api/events/categories: failed to get categories from Directus", "error", err)
 		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
 		return
 	}
-	defer resp.Body.Close()
 
-	// Parse response from Directus request
-	var directusResp struct {
-		Data []Category `json:"data"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
-		util.LOGGER.Error("GET /api/events/categories: failed to decode Directus response", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Internal server error"})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, directusResp.Data)
+	ctx.JSON(http.StatusOK, categories)
 }
