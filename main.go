@@ -19,9 +19,15 @@ import (
 
 func main() {
 	// Load config
-	config := util.LoadConfig(".env")
-
-	util.LOGGER.Error("RedisAddr", "val", config.RedisAddr)
+	config := util.NewConfig()
+	if err := config.LoadStaticConfig(".env"); err != nil {
+		util.LOGGER.Warn("Failed to load static config from .env", "error", err)
+		util.LOGGER.Warn("Start using environment variables instead")
+	}
+	if err := config.LoadDynamicConfig(); err != nil {
+		util.LOGGER.Error("Failed to load dynamic config from Directus collection", "error", err)
+		os.Exit(1)
+	}
 
 	// Connect to database and Redis
 	queries := db.NewQueries()
@@ -36,7 +42,7 @@ func main() {
 
 	// Create dependencies for server
 	distributor := worker.NewRedisTaskDistributor(asynq.RedisClientOpt{Addr: config.RedisAddr})
-	cld, err := uploader.NewCld(config.CloudName, config.CloudKey, config.CloudSecret)
+	cld, err := uploader.NewCld(config.CloudStorageName, config.CloudStorageKey, config.CloudStorageSecret)
 	if err != nil {
 		util.LOGGER.Error("failed to initialize uploader service", "error", err)
 		os.Exit(1)
@@ -44,7 +50,7 @@ func main() {
 	mailService := notify.NewEmailService(config.Email, config.AppPassword)
 
 	// Start the background server in separate goroutine (since it's will block the main thread)
-	go StartBackgroundProcessor(asynq.RedisClientOpt{Addr: config.RedisAddr}, queries, mailService)
+	go StartBackgroundProcessor(asynq.RedisClientOpt{Addr: config.RedisAddr}, queries, mailService, config)
 
 	// Start server
 	server := api.NewServer(queries, distributor, mailService, cld, config)
@@ -58,9 +64,10 @@ func StartBackgroundProcessor(
 	redisOpts asynq.RedisClientOpt,
 	queries *db.Queries,
 	mailService notify.MailService,
+	config *util.Config,
 ) error {
 	// Create the processor
-	processor := worker.NewRedisTaskProcessor(redisOpts, queries, mailService)
+	processor := worker.NewRedisTaskProcessor(redisOpts, queries, mailService, config)
 
 	// Start process tasks
 	return processor.Start()

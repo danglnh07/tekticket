@@ -30,10 +30,9 @@ type Server struct {
 
 	// Dependencies
 	distributor   worker.TaskDistributor
-	uploadService *uploader.CloudinaryService
 	mailService   notify.MailService
-
-	config *util.Config
+	uploadService *uploader.CloudinaryService
+	config        *util.Config
 }
 
 // Constructor method for server struct
@@ -73,6 +72,8 @@ func (server *Server) RegisterHandler() {
 			auth.POST("/login", server.Login)
 			auth.POST("/logout", server.Logout)
 			auth.POST("/refresh", server.RefreshToken)
+			auth.POST("/password/request", server.SendResetPasswordRequest)
+			auth.POST("/password/reset", server.ResetPassword)
 		}
 
 		profile := api.Group("/profile")
@@ -81,11 +82,13 @@ func (server *Server) RegisterHandler() {
 			profile.PUT("", server.UpdateProfile)
 		}
 
-		// Events routes
 		events := api.Group("/events")
 		{
-			events.GET("/tickets/:event_id", server.GetEventTickets)
-		}
+			events.GET("", server.GetEvents)
+			events.GET("/:id", server.GetEventByID)
+			events.GET("/categories", server.GetCategories)
+      events.GET("/tickets/:event_id", server.GetEventTickets)
+    }
 
 		// Seat zones routes
 		seatZones := api.Group("/seat-zones")
@@ -105,10 +108,7 @@ func (server *Server) RegisterHandler() {
 
 	// Static handler
 	server.router.GET("/images/:id", func(ctx *gin.Context) {
-		// Get asset ID
 		id := ctx.Param("id")
-
-		// Get the image
 		resp, status, err := util.MakeRequest("GET", server.config.DirectusAddr+"/assets/"+id, nil, server.config.DirectusStaticToken)
 		if err != nil {
 			util.LOGGER.Error("GET /images/:id: failed to get assets", "error", err)
@@ -116,7 +116,6 @@ func (server *Server) RegisterHandler() {
 			return
 		}
 
-		// Copy content type and body
 		ctx.Header("Content-Type", resp.Header.Get("Content-Type"))
 		io.Copy(ctx.Writer, resp.Body)
 	})

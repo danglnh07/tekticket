@@ -4,6 +4,7 @@ services:
         ports:
             - 8055:8055
         environment:
+            # Database environments
             SECRET: ${DIRECTUS_SECRET}
             ADMIN_EMAIL: ${DIRECTUS_EMAIL}
             ADMIN_PASSWORD: ${DIRECTUS_PASSWORD}
@@ -15,8 +16,18 @@ services:
             DB_PASSWORD: ${DIRECTUS_DATABASE_PASSWORD}
             DB_SSL: true
             WEBSOCKETS_ENABLED: "true"
+            PUBLIC_URL: http://localhost:8055
 
-            # Configure Cloudinary as storage
+            # CORS setup for Directus
+            CORS_ENABLED: "true"
+            CORS_ORIGIN: "true"
+            CORS_METHODS: "GET,POST,PATCH,DELETE,PUT"
+            CORS_ALLOWED_HEADERS: "Content-Type,Authorization"
+            CORS_EXPOSED_HEADERS: "Content-Range"
+            CORS_CREDENTIALS: "true"
+            CORS_MAX_AGE: 86400
+
+            # Cloud storage setup
             STORAGE_LOCATIONS: cloudinary
             STORAGE_CLOUDINARY_DRIVER: cloudinary
             STORAGE_CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_NAME}
@@ -25,24 +36,43 @@ services:
             STORAGE_CLOUDINARY_ROOT: directus-files
             STORAGE_CLOUDINARY_ACCESS_MODE: public
 
-            PUBLIC_URL: http://localhost:8055
+            # Disable storage health check to avoid timeout error since Directus is slow
+            HEALTH_STORAGE_ENABLED: "false"
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    'node -e "require(''http'').get(''http://localhost:8055/server/ping'', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on(''error'', () => process.exit(1))"',
+                ]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 40s
+        depends_on: {}
+
     redis:
         image: redis:8.2-alpine3.22
         ports:
             - 6379:6379
-    # ngrok:
-    #     image: ngrok/ngrok:latest
-    #     depends_on:
-    #         - directus
-    #         - redis
-    #         - app
-    #     environment:
-    #         NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
-    #     volumes:
-    #         - ./ngrok.yml:/etc/ngrok.yml
-    #     command: start --all --config /etc/ngrok.yml
-    #     ports:
-    #         - 4040:4040
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 5s
+            timeout: 3s
+            retries: 5
+
+    ngrok:
+        image: ngrok/ngrok:latest
+        depends_on:
+            - directus
+            - redis
+            - app
+        environment:
+            NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+        volumes:
+            - ./ngrok.yml:/etc/ngrok.yml
+        command: start --all --config /etc/ngrok.yml
+        ports:
+            - 4040:4040
     app:
         build:
             context: .
@@ -52,5 +82,8 @@ services:
         env_file:
             - .env
         depends_on:
-            - directus
-            - redis
+            # Only start server when both Directus and Redis can be ping to
+            directus:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
