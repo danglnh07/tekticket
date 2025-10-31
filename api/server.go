@@ -82,24 +82,22 @@ func (server *Server) RegisterHandler() {
 			profile.PUT("", server.UpdateProfile)
 		}
 
+		categories := api.Group("/categories")
+		{
+			categories.GET("", server.GetCategories)
+		}
+
 		events := api.Group("/events")
 		{
-			events.GET("", server.GetEvents)
-			events.GET("/:id", server.GetEventByID)
-			events.GET("/categories", server.GetCategories)
-      events.GET("/tickets/:event_id", server.GetEventTickets)
-    }
-
-		// Seat zones routes
-		seatZones := api.Group("/seat-zones")
-		{
-			seatZones.GET("/:seat_zone_id", server.GetSeats)
+			events.GET("", server.ListEvents)
+			events.GET("/:id", server.GetEvent)
 		}
 
 		// Memberships routes
 		memberships := api.Group("/memberships")
 		{
-			memberships.GET("/:user_id", server.GetUserMembership)
+			memberships.GET("", server.ListMemberships)
+			memberships.GET("/:id", server.GetUserMembership)
 		}
 	}
 

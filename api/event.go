@@ -6,235 +6,118 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
+
 	"strings"
 	"tekticket/util"
 
 	"github.com/gin-gonic/gin"
 )
 
-// EventListResponse represents the response for list events
-type EventListResponse struct {
-	Data []Event `json:"data"`
-	Meta *Meta   `json:"meta,omitempty"`
+// Event schedule data returned
+type EventSchedule struct {
+	ID               string `json:"id"`
+	StartTime        string `json:"start_time"`
+	EndTime          string `json:"end_time"`
+	StartCheckinTime string `json:"start_checkin_time"`
+	EndCheckinTime   string `json:"end_checkin_time"`
 }
 
-// Meta represents pagination metadata
-type Meta struct {
-	TotalCount  int `json:"total_count"`
-	FilterCount int `json:"filter_count"`
-	Limit       int `json:"limit"`
-	Offset      int `json:"offset"`
+// Seat data returned
+type Seat struct {
+	ID         string `json:"id"`
+	Status     string `json:"status"`
+	SeatNumber string `json:"seat_number"`
 }
 
-// Event struct
-type Event struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Location    string   `json:"location"`
-	Category    string   `json:"category"`
-	StartTime   string   `json:"start_time"`
-	EndTime     string   `json:"end_time"`
-	Image       string   `json:"image,omitempty"`
-	Price       *float64 `json:"price,omitempty"`
-	Status      string   `json:"status"`
-	DateCreated string   `json:"date_created"`
-	Organizer   string   `json:"organizer,omitempty"`
-	Capacity    *int     `json:"capacity,omitempty"`
-	TicketsSold *int     `json:"tickets_sold,omitempty"`
+// Seat zone data returned
+type SeatZone struct {
+	ID          string `json:"id"`
+	Description string `json:"description"`
+	TotalSeats  int    `json:"total_seats"`
+	Seats       []Seat `json:"seats"`
 }
 
-// GetEvents godoc
-// @Summary      Retrieve list of events
-// @Description  Returns a paginated list of events with optional filters for search, category, location, date, and status.
-// @Description  If `chose_date` is provided, only events that are active during that date will be returned.
-// @Tags         Events
-// @Accept       json
-// @Produce      json
-// @Param        search          query     string  false  "Search by event title or description"
-// @Param        category        query     string  false  "Filter by category ID"
-// @Param        location        query     string  false  "Filter by location"
-// @Param        chose_date      query     string  false  "Filter events active on this date (YYYY-MM-DD or ISO format)"
-// @Param        status          query     string  false  "Filter by status (default: published)"
-// @Param        sort            query     string  false  "Sort field (default: -date_created)"
-// @Param        limit           query     int     false  "Limit number of items (default: 20, max: 100)"
-// @Param        offset          query     int     false  "Offset for pagination (default: 0)"
-// @Success      200  {object}  EventListResponse  "List of events retrieved successfully"
-// @Failure      400  {object}  ErrorResponse       "Invalid query parameters"
-// @Failure      401  {object}  ErrorResponse       "Unauthorized access"
-// @Failure      500  {object}  ErrorResponse       "Internal server error or Directus failure"
-// @Security BearerAuth
-// @Router       /api/events [get]
-func (server *Server) GetEvents(ctx *gin.Context) {
-	// Get user access token
-	token := server.GetToken(ctx)
-	if token == "" {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
-		return
-	}
+// Ticket selling schedules data returned
+type TicketSellingSchedule struct {
+	ID               string `json:"id"`
+	Total            int    `json:"total"`
+	Available        int    `json:"available"`
+	StartSellingTime string `json:"start_selling_time"`
+	EndSellingTime   string `json:"end_selling_time"`
+}
 
-	// Get filter parameters
-	search := ctx.Query("search")
-	category := ctx.Query("category")
-	location := ctx.Query("location")
-	choseDate := ctx.Query("chose_date")
-	status := ctx.DefaultQuery("status", "published")
-	sortField := ctx.DefaultQuery("sort", "-date_created")
+// Ticket data returned
+type Ticket struct {
+	ID                     string                  `json:"id"`
+	Rank                   string                  `json:"rank"`
+	Description            string                  `json:"description"`
+	BasePrice              int                     `json:"base_price"`
+	TicketSellingSchedules []TicketSellingSchedule `json:"ticket_selling_schedules"`
+}
 
-	limit, err := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
-	if err != nil || limit < 1 {
-		util.LOGGER.Warn("GET /api/events: invalid limit parameter, defaulting to 20", "input", ctx.Query("limit"))
-		limit = 20
-	}
-	if limit > 100 {
-		util.LOGGER.Warn("GET /api/events: limit parameter exceed 100, defaulting to 100", "limit", limit)
-		limit = 100
-	}
+// Event creator data returned
+type Creator struct {
+	Firstname string `json:"first_name"`
+	Lastname  string `json:"last_name"`
+	Email     string `json:"email"`
+}
 
-	offset, err := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
-	if err != nil || offset < 0 {
-		util.LOGGER.Warn("GET /api/events: offset parameter invalid, defaulting to 0", "offset", ctx.Query("offset"))
-		offset = 0
-	}
+// Category data returned
+type Category struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
 
-	// normalize choose_date (if user only provide YYYY-MM-DD, without the time segments)
-	normalizedChoseDate := util.NormalizeChoseDate(choseDate)
-	util.LOGGER.Info("GET /api/events: date normalization", "original", choseDate, "normalized", normalizedChoseDate)
+// Event data return
+type EventDetail struct {
+	ID             string          `json:"id"`
+	Name           string          `json:"name"`
+	Description    string          `json:"description"`
+	Address        string          `json:"address"`
+	City           string          `json:"city"`
+	Country        string          `json:"country"`
+	Slug           string          `json:"slug"`
+	PreviewImage   string          `json:"preview_image"`
+	EventSchedules []EventSchedule `json:"event_schedules"`
+	SeatZones      []SeatZone      `json:"seat_zones"`
+	Tickets        []Ticket        `json:"tickets"`
+	Creator        Creator         `json:"creator"`
+	Category       Category        `json:"categories"`
+}
 
-	// If choose_date is provided, we only fetch events that has their schedule include choose_date
-	var eventIDs []string
-	if normalizedChoseDate != "" {
-		// start_time <= choose_date <= end_time
-		filterStr := fmt.Sprintf(
-			`{"_and":[{"start_time":{"_lte":"%s"}},{"end_time":{"_gte":"%s"}}]}`,
-			normalizedChoseDate, normalizedChoseDate,
-		)
-		util.LOGGER.Info("GET /api/events: time filter", "filter_str", filterStr)
+// Directus response structures with status fields
+type directusSeatZone struct {
+	SeatZone
+	Status string `json:"status"`
+}
 
-		// Build the query URL
-		scheduleURL := fmt.Sprintf(
-			"%s/items/event_schedules?filter=%s&fields=event_id.id&limit=-1",
-			server.config.DirectusAddr,
-			url.QueryEscape(filterStr),
-		)
+type directusTicket struct {
+	Ticket
+	Status string `json:"status"`
+}
 
-		// Make request to Directus
-		scheduleResp, statusCode, err := util.MakeRequest("GET", scheduleURL, nil, token)
-		if err != nil {
-			util.LOGGER.Error("GET /api/events: failed to get schedules from Directus", "error", err)
-			ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
-			return
-		}
-		defer scheduleResp.Body.Close()
+type directusCategory struct {
+	Category
+	Status string `json:"status"`
+}
 
-		// Parse response from Directus request
-		var scheduleDirectusResp struct {
-			Data []struct {
-				EventID struct {
-					ID string `json:"id"`
-				} `json:"event_id"`
-			} `json:"data"`
-		}
-		if err := json.NewDecoder(scheduleResp.Body).Decode(&scheduleDirectusResp); err != nil {
-			util.LOGGER.Error("GET /api/events: failed to decode schedules response", "error", err)
-			ctx.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Internal server error"})
-			return
-		}
-
-		// 1 event can have different opening time, but these range-time will never overlapped, so there would be no way
-		// that an event ID can be duplicate
-		for _, row := range scheduleDirectusResp.Data {
-			eventIDs = append(eventIDs, row.EventID.ID)
-		}
-	}
-
-	// If filter date param provided, and no eventID found, then we stop and return here
-	if normalizedChoseDate != "" && len(eventIDs) == 0 {
-		util.LOGGER.Info("GET /api/events: no events found matching time filter", "chose_date", normalizedChoseDate)
-		ctx.JSON(http.StatusOK, EventListResponse{
-			Data: []Event{},
-			Meta: &Meta{TotalCount: 0, FilterCount: 0, Limit: limit, Offset: offset},
-		})
-		return
-	}
-
-	// Build filter to get the list of events
-	filters := BuildEventFilters(search, category, location, status)
-	if len(eventIDs) > 0 {
-		idFilter := fmt.Sprintf(`{"id":{"_in":["%s"]}}`, strings.Join(eventIDs, `","`))
-		if filters == "" {
-			filters = idFilter
-		} else {
-			filters = fmt.Sprintf(`{"_and":[%s,%s]}`, filters, idFilter)
-		}
-	}
-
-	// Make API to Directus to get events
-	queryParams := url.Values{}
-	if filters != "" {
-		queryParams.Add("filter", filters)
-	}
-
-	queryParams.Add("fields", "*,category_id.id,category_id.name,image.id,preview_image.id")
-	queryParams.Add("limit", strconv.Itoa(limit))
-	queryParams.Add("offset", strconv.Itoa(offset))
-	queryParams.Add("sort", sortField)
-	queryParams.Add("meta", "total_count,filter_count")
-
-	eventURL := fmt.Sprintf("%s/items/events?%s", server.config.DirectusAddr, queryParams.Encode())
-	eventResp, statusCode, err := util.MakeRequest("GET", eventURL, nil, token)
-	if err != nil {
-		util.LOGGER.Error("GET /api/events: failed to get events from Directus", "error", err)
-		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
-		return
-	}
-	defer eventResp.Body.Close()
-
-	// Parse events response from Directus
-	var directusEventResp struct {
-		Data []map[string]any `json:"data"`
-		Meta *struct {
-			TotalCount  int `json:"total_count"`
-			FilterCount int `json:"filter_count"`
-		} `json:"meta,omitempty"`
-	}
-
-	if err := json.NewDecoder(eventResp.Body).Decode(&directusEventResp); err != nil {
-		util.LOGGER.Error("GET /api/events: failed to decode Directus response", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Internal server error"})
-		return
-	}
-
-	// Map result
-	events := make([]Event, 0, len(directusEventResp.Data))
-	for _, item := range directusEventResp.Data {
-		event := MapToEvent(item)
-		if event.Image != "" {
-			event.Image = util.CreateImageLink(event.Image)
-		}
-		events = append(events, event)
-	}
-
-	// If choose_date filter provided, we need to attach additional information to the response
-	events = AttachScheduleToEvents(
-		events,
-		normalizedChoseDate,
-		"", // ed (end-date filter) if future needed
-		server.config.DirectusAddr,
-		server.config.DirectusStaticToken,
-	)
-
-	response := EventListResponse{Data: events}
-	if directusEventResp.Meta != nil {
-		response.Meta = &Meta{
-			TotalCount:  directusEventResp.Meta.TotalCount,
-			FilterCount: directusEventResp.Meta.FilterCount,
-			Limit:       limit,
-			Offset:      offset,
-		}
-	}
-
-	ctx.JSON(http.StatusOK, response)
+type directusEventDetail struct {
+	ID             string             `json:"id"`
+	Status         string             `json:"status"`
+	Name           string             `json:"name"`
+	Description    string             `json:"description"`
+	Address        string             `json:"address"`
+	City           string             `json:"city"`
+	Country        string             `json:"country"`
+	Slug           string             `json:"slug"`
+	PreviewImage   string             `json:"preview_image"`
+	EventSchedules []EventSchedule    `json:"event_schedules"`
+	SeatZones      []directusSeatZone `json:"seat_zones"`
+	Tickets        []directusTicket   `json:"tickets"`
+	Creator        Creator            `json:"creator_id"`
+	Category       directusCategory   `json:"category_id"`
 }
 
 // GetEventByID godoc
@@ -244,13 +127,14 @@ func (server *Server) GetEvents(ctx *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id              path      string  true   "Event ID"
-// @Success      200  {object}  Event             "Event details retrieved successfully"
+// @Success      200  {object}  EventDetail             "Event details retrieved successfully"
 // @Failure      400  {object}  ErrorResponse     "Invalid or missing event ID"
 // @Failure      401  {object}  ErrorResponse     "Unauthorized access"
+// @Failure      404  {object}  ErrorResponse     "Event not found or not published"
 // @Failure      500  {object}  ErrorResponse     "Internal server error or failed to communicate with Directus"
 // @Security BearerAuth
 // @Router       /api/events/{id} [get]
-func (server *Server) GetEventByID(ctx *gin.Context) {
+func (server *Server) GetEvent(ctx *gin.Context) {
 	// Get access token
 	token := server.GetToken(ctx)
 	if token == "" {
@@ -265,9 +149,19 @@ func (server *Server) GetEventByID(ctx *gin.Context) {
 		return
 	}
 
-	// Build the query URL
+	// Build the query URL with status fields
 	queryParams := url.Values{}
-	queryParams.Add("fields", "*,category_id.id,category_id.name,image.id,preview_image.id")
+	fields := []string{
+		"*",
+		"event_schedules.id", "event_schedules.start_time", "event_schedules.end_time",
+		"event_schedules.start_checkin_time", "event_schedules.end_checkin_time",
+		"seat_zones.id", "seat_zones.description", "seat_zones.total_seats", "seat_zones.status",
+		"seat_zones.seats.id", "seat_zones.seats.status", "seat_zones.seats.seat_number",
+		"tickets.id", "tickets.rank", "tickets.description", "tickets.base_price", "tickets.status",
+		"creator_id.first_name", "creator_id.last_name", "creator_id.email",
+		"category_id.id", "category_id.name", "category_id.description", "category_id.status",
+	}
+	queryParams.Add("fields", strings.Join(fields, ","))
 	directusURL := fmt.Sprintf("%s/items/events/%s?%s", server.config.DirectusAddr, id, queryParams.Encode())
 
 	// Make request to Directus
@@ -281,7 +175,7 @@ func (server *Server) GetEventByID(ctx *gin.Context) {
 
 	// Parse response from Directus request
 	var directusResp struct {
-		Data map[string]any `json:"data"`
+		Data directusEventDetail `json:"data"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
@@ -290,232 +184,329 @@ func (server *Server) GetEventByID(ctx *gin.Context) {
 		return
 	}
 
-	event := MapToEvent(directusResp.Data)
-
-	// Since this is single GET, we don't have a date filter, so we pass empty value to get the available one
-	events := AttachScheduleToEvents(
-		[]Event{event},
-		"",
-		"",
-		server.config.DirectusAddr,
-		server.config.DirectusStaticToken,
-	)
-	if len(events) > 0 {
-		event = events[0]
-	}
-	if event.Image != "" {
-		event.Image = util.CreateImageLink(event.Image)
+	// Check if event is published
+	if directusResp.Data.Status != "published" {
+		ctx.JSON(http.StatusNotFound, ErrorResponse{Message: "Event not found"})
+		return
 	}
 
-	ctx.JSON(http.StatusOK, event)
-}
-
-// Helper method: build the filter query string for event querying
-func BuildEventFilters(search, category, location, status string) string {
-	var filters []string
-
-	if status != "" {
-		filters = append(filters, fmt.Sprintf(`{"status":{"_eq":"%s"}}`, status))
-	}
-	if search != "" {
-		searchFilter := fmt.Sprintf(`{"_or":[{"name":{"_icontains":"%s"}},{"description":{"_icontains":"%s"}}]}`, search, search)
-		filters = append(filters, searchFilter)
-	}
-	if category != "" {
-		categoryFilter := fmt.Sprintf(`{"category_id":{"_eq":"%s"}}`, category)
-		filters = append(filters, categoryFilter)
-	}
-	if location != "" {
-		filters = append(filters, fmt.Sprintf(`{"city":{"_icontains":"%s"}}`, location))
+	// Filter and transform the data
+	eventDetail := EventDetail{
+		ID:             directusResp.Data.ID,
+		Name:           directusResp.Data.Name,
+		Description:    directusResp.Data.Description,
+		Address:        directusResp.Data.Address,
+		City:           directusResp.Data.City,
+		Country:        directusResp.Data.Country,
+		Slug:           directusResp.Data.Slug,
+		PreviewImage:   directusResp.Data.PreviewImage,
+		Creator:        directusResp.Data.Creator,
+		EventSchedules: directusResp.Data.EventSchedules,
+		SeatZones:      make([]SeatZone, 0),
+		Tickets:        make([]Ticket, 0),
 	}
 
-	if len(filters) == 0 {
-		return ""
-	}
-	if len(filters) == 1 {
-		return filters[0]
-	}
-	return fmt.Sprintf(`{"_and":[%s]}`, strings.Join(filters, ","))
-}
-
-// Map response map into Event struct
-func MapToEvent(data map[string]any) Event {
-	event := Event{}
-
-	if id, ok := data["id"].(string); ok {
-		event.ID = id
-	}
-	if name, ok := data["name"].(string); ok {
-		event.Name = name
-	}
-	if description, ok := data["description"].(string); ok {
-		event.Description = description
-	}
-
-	// Location = Address + City + Country
-	address := ""
-	city := ""
-	country := ""
-	if a, ok := data["address"].(string); ok {
-		address = a
-	}
-	if c, ok := data["city"].(string); ok {
-		city = c
-	}
-	if co, ok := data["country"].(string); ok {
-		country = co
-	}
-	parts := []string{}
-	for _, p := range []string{address, city, country} {
-		if p != "" {
-			parts = append(parts, p)
+	// Filter seat_zones - only published, and initialize seats array
+	for _, zone := range directusResp.Data.SeatZones {
+		if zone.Status == "published" {
+			seatZone := zone.SeatZone
+			// Ensure seats is empty array, not null
+			if seatZone.Seats == nil {
+				seatZone.Seats = make([]Seat, 0)
+			}
+			eventDetail.SeatZones = append(eventDetail.SeatZones, seatZone)
 		}
 	}
-	event.Location = strings.Join(parts, ", ")
 
-	// Handle category
-	if catObj, ok := data["category_id"].(map[string]any); ok {
-		if catName, ok := catObj["name"].(string); ok && catName != "" {
-			event.Category = catName
-		} else if catID, ok := catObj["id"].(string); ok {
-			event.Category = catID
+	// Filter tickets - only published, and initialize ticket_selling_schedules array
+	for _, ticket := range directusResp.Data.Tickets {
+		if ticket.Status == "published" {
+			t := ticket.Ticket
+			// Ensure ticket_selling_schedules is empty array, not null
+			if t.TicketSellingSchedules == nil {
+				t.TicketSellingSchedules = make([]TicketSellingSchedule, 0)
+			}
+			eventDetail.Tickets = append(eventDetail.Tickets, t)
 		}
-	} else if catStr, ok := data["category_id"].(string); ok {
-		event.Category = catStr
 	}
 
-	if previewImage, ok := data["preview_image"].(string); ok {
-		event.Image = util.CreateImageLink(previewImage)
-	}
-
-	if startTime, ok := data["start_time"].(string); ok {
-		event.StartTime = startTime
-	}
-	if endTime, ok := data["end_time"].(string); ok {
-		event.EndTime = endTime
-	}
-
-	if price, ok := data["price"].(float64); ok {
-		event.Price = &price
-	}
-	if status, ok := data["status"].(string); ok {
-		event.Status = status
-	}
-	if dateCreated, ok := data["date_created"].(string); ok {
-		event.DateCreated = dateCreated
-	}
-	if organizer, ok := data["organizer"].(string); ok {
-		event.Organizer = organizer
-	}
-	if capacity, ok := data["capacity"].(float64); ok {
-		cap := int(capacity)
-		event.Capacity = &cap
-	}
-	if ticketsSold, ok := data["tickets_sold"].(float64); ok {
-		sold := int(ticketsSold)
-		event.TicketsSold = &sold
-	}
-
-	return event
-}
-
-// Attach start/end time from event_schedules to each event
-func AttachScheduleToEvents(events []Event, choseDate, ed, directusAddr, token string) []Event {
-	if len(events) == 0 {
-		return events
-	}
-
-	ids := make([]string, 0, len(events))
-	for _, e := range events {
-		ids = append(ids, e.ID)
-	}
-
-	idFilters := make([]string, 0, len(ids))
-	for _, id := range ids {
-		idFilters = append(idFilters, fmt.Sprintf(`{"event_id":{"_eq":"%s"}}`, id))
-	}
-	base := fmt.Sprintf(`{"_or":[%s]}`, strings.Join(idFilters, ","))
-
-	var timeFilter string
-	if choseDate != "" {
-		// Logic: (start_time <= choseDate) AND (end_time >= choseDate)
-		timeFilter = fmt.Sprintf(`{"_and":[{"start_time":{"_lte":"%s"}},{"end_time":{"_gte":"%s"}}]}`, choseDate, choseDate)
-	}
-
-	var filter string
-	if timeFilter != "" {
-		filter = fmt.Sprintf(`{"_and":[%s,%s]}`, base, timeFilter)
+	// Handle category - only if published, otherwise return empty struct
+	if directusResp.Data.Category.Status == "published" {
+		eventDetail.Category = directusResp.Data.Category.Category
 	} else {
-		filter = base
+		eventDetail.Category = Category{}
 	}
 
-	qp := url.Values{}
-	qp.Add("filter", filter)
-	qp.Add("fields", "event_id,start_time,end_time")
-	qp.Add("sort", "start_time") // Get the earliest
-	qp.Add("limit", "-1")        // If Directus allow unlimited
+	// Remap preview_image ID into a useable link
+	if eventDetail.PreviewImage != "" {
+		eventDetail.PreviewImage = util.CreateImageLink(eventDetail.PreviewImage)
+	}
 
-	u := fmt.Sprintf("%s/items/event_schedules?%s", directusAddr, qp.Encode())
-	resp, _, err := util.MakeRequest("GET", u, nil, token)
-	if err != nil || resp == nil {
-		util.LOGGER.Error("AttachScheduleToEvents: failed to get schedules", "error", err)
-		return events
+	ctx.JSON(http.StatusOK, eventDetail)
+}
+
+// Event minimal info for list view
+type EventInfo struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Address      string   `json:"address"`
+	City         string   `json:"city"`
+	Country      string   `json:"country"`
+	PreviewImage string   `json:"preview_image"`
+	Category     Category `json:"category"`
+	StartTime    string   `json:"start_time"` // Closest upcoming schedule time
+	BasePrice    int      `json:"base_price"` // Minimum ticket price
+}
+
+// Directus response structures for list events
+type directusEventScheduleMinimal struct {
+	StartTime string `json:"start_time"`
+}
+
+type directusTicketMinimal struct {
+	BasePrice int    `json:"base_price"`
+	Status    string `json:"status"`
+}
+
+type directusEventInfo struct {
+	ID             string                         `json:"id"`
+	Status         string                         `json:"status"`
+	Name           string                         `json:"name"`
+	Address        string                         `json:"address"`
+	City           string                         `json:"city"`
+	Country        string                         `json:"country"`
+	PreviewImage   string                         `json:"preview_image"`
+	EventSchedules []directusEventScheduleMinimal `json:"event_schedules"`
+	Tickets        []directusTicketMinimal        `json:"tickets"`
+	Category       directusCategory               `json:"category_id"`
+}
+
+// ListEvents godoc
+// @Summary      List all events
+// @Description  Returns a list of published events with minimal information
+// @Tags         Events
+// @Accept       json
+// @Produce      json
+// @Param        name         query     string  false  "Filter by event name (case-insensitive contains)"
+// @Param        location     query     string  false  "Filter by city or country (case-insensitive contains)"
+// @Param        category     query     string  false  "Filter by category name (case-insensitive contains)"
+// @Param        min_price    query     int     false  "Filter by minimum base price"
+// @Param        max_price    query     int     false  "Filter by maximum base price"
+// @Param        limit        query     int     false  "Limit number of results (default: 50)"
+// @Param        offset       query     int     false  "Offset for pagination (default: 0)"
+// @Param        sort         query     string  false  "Sort field (default: -date_created). Use - prefix for descending"
+// @Success      200  {array}   EventInfo           "List of events retrieved successfully"
+// @Failure      401  {object}  ErrorResponse       "Unauthorized access"
+// @Failure      500  {object}  ErrorResponse       "Internal server error"
+// @Security BearerAuth
+// @Router       /api/events [get]
+func (server *Server) ListEvents(ctx *gin.Context) {
+	// Get access token
+	token := server.GetToken(ctx)
+	if token == "" {
+		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
+		return
+	}
+
+	// Build query parameters
+	queryParams := url.Values{}
+
+	// Fields to retrieve
+	fields := []string{
+		"id", "status", "name", "address", "city", "country", "preview_image",
+		"event_schedules.start_time",
+		"tickets.base_price", "tickets.status",
+		"category_id.id", "category_id.name", "category_id.description", "category_id.status",
+	}
+	queryParams.Add("fields", strings.Join(fields, ","))
+
+	// Filter: only published events
+	queryParams.Add("filter[status][_eq]", "published")
+
+	// Filter: by name (case-insensitive)
+	if name := ctx.Query("name"); name != "" {
+		queryParams.Add("filter[name][_icontains]", name)
+	}
+
+	// Filter: by location (city OR country)
+	if location := ctx.Query("location"); location != "" {
+		// Use JSON filter for OR condition
+		locationFilter := fmt.Sprintf(`{"_or":[{"city":{"_icontains":"%s"}},{"country":{"_icontains":"%s"}}]}`,
+			location, location)
+		queryParams.Add("filter", locationFilter)
+	}
+
+	// Filter: by category name
+	if category := ctx.Query("category"); category != "" {
+		queryParams.Add("filter[category_id][name][_icontains]", category)
+	}
+
+	// Note: Price filtering is done post-fetch since we need to calculate min price from tickets
+	minPrice := 0
+	maxPrice := 0
+	if minPriceStr := ctx.Query("min_price"); minPriceStr != "" {
+		if val, err := strconv.Atoi(minPriceStr); err == nil {
+			minPrice = val
+		}
+	}
+	if maxPriceStr := ctx.Query("max_price"); maxPriceStr != "" {
+		if val, err := strconv.Atoi(maxPriceStr); err == nil {
+			maxPrice = val
+		}
+	}
+
+	// Pagination
+	limit := 50
+	if limitStr := ctx.Query("limit"); limitStr != "" {
+		if val, err := strconv.Atoi(limitStr); err == nil && val > 0 {
+			limit = val
+		}
+	}
+	queryParams.Add("limit", strconv.Itoa(limit))
+
+	offset := 0
+	if offsetStr := ctx.Query("offset"); offsetStr != "" {
+		if val, err := strconv.Atoi(offsetStr); err == nil && val >= 0 {
+			offset = val
+		}
+	}
+	queryParams.Add("offset", strconv.Itoa(offset))
+
+	// Sort
+	sort := ctx.Query("sort")
+	if sort == "" {
+		sort = "-date_created" // Default: newest first
+	}
+	queryParams.Add("sort", sort)
+
+	// Build URL
+	directusURL := fmt.Sprintf("%s/items/events?%s", server.config.DirectusAddr, queryParams.Encode())
+
+	// Make request to Directus
+	resp, statusCode, err := util.MakeRequest("GET", directusURL, nil, token)
+	if err != nil {
+		util.LOGGER.Error("GET /api/events: failed to get events from Directus", "error", err)
+		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
+		return
 	}
 	defer resp.Body.Close()
 
-	var payload struct {
-		Data []map[string]any `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		util.LOGGER.Error("AttachScheduleToEvents: decode error", "error", err)
-		return events
+	// Parse response
+	var directusResp struct {
+		Data []directusEventInfo `json:"data"`
 	}
 
-	// Group in event ID
-	scheduleMap := make(map[string][]map[string]any)
-	for _, s := range payload.Data {
-		if id, ok := s["event_id"].(string); ok {
-			scheduleMap[id] = append(scheduleMap[id], s)
+	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
+		util.LOGGER.Error("GET /api/events: failed to decode Directus response", "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Internal server error"})
+		return
+	}
+
+	// Transform and filter data
+	events := make([]EventInfo, 0)
+
+	for _, event := range directusResp.Data {
+		// Skip if event is not published (redundant check)
+		if event.Status != "published" {
 			continue
 		}
-		if obj, ok := s["event_id"].(map[string]any); ok {
-			if id, ok := obj["id"].(string); ok {
-				scheduleMap[id] = append(scheduleMap[id], s)
+
+		// Calculate base price (minimum of published tickets)
+		basePrice := 0
+		hasPublishedTickets := false
+		for _, ticket := range event.Tickets {
+			if ticket.Status == "published" {
+				if !hasPublishedTickets || ticket.BasePrice < basePrice {
+					basePrice = ticket.BasePrice
+					hasPublishedTickets = true
+				}
 			}
 		}
-	}
 
-	// Attach start/end time from schedules
-	for i, e := range events {
-		if list, ok := scheduleMap[e.ID]; ok && len(list) > 0 {
-			// Since it's sorted, list[0] is the earliest in range
-			if st, ok := list[0]["start_time"].(string); ok {
-				events[i].StartTime = st
+		// Apply price filters
+		if minPrice > 0 && basePrice < minPrice {
+			continue
+		}
+		if maxPrice > 0 && basePrice > maxPrice {
+			continue
+		}
+
+		// Find closest start time
+		startTime := ""
+		if len(event.EventSchedules) > 0 {
+			currentTime := time.Now()
+			var closestTime time.Time
+			foundFutureTime := false
+
+			for _, schedule := range event.EventSchedules {
+				// Try multiple time formats
+				var scheduleTime time.Time
+				var err error
+
+				// Try RFC3339 first (with timezone)
+				scheduleTime, err = time.Parse(time.RFC3339, schedule.StartTime)
+				if err != nil {
+					// Try without timezone (assume UTC)
+					scheduleTime, err = time.Parse("2006-01-02T15:04:05", schedule.StartTime)
+					if err != nil {
+						util.LOGGER.Warn("GET /api/events: failed to parse schedule start time",
+							"time", schedule, "error", err)
+						continue
+					}
+				}
+
+				// Find the closest future time, or the latest past time if no future times
+				if scheduleTime.After(currentTime) {
+					util.LOGGER.Info("GET /api/events: schedule time after current time")
+					if !foundFutureTime || scheduleTime.Before(closestTime) {
+						util.LOGGER.Info("Not found future time or schedule time before closest time")
+						closestTime = scheduleTime
+						foundFutureTime = true
+					}
+				} else if !foundFutureTime {
+					util.LOGGER.Info("GET /api/events: not found future time")
+					if closestTime.IsZero() || scheduleTime.After(closestTime) {
+						util.LOGGER.Info("GET /api/events: closest time is zero or schedule time after closest time")
+						closestTime = scheduleTime
+					}
+				}
 			}
-			if et, ok := list[0]["end_time"].(string); ok {
-				events[i].EndTime = et
-			}
-		} else {
-			// No schedule match, leave empty
-			if choseDate != "" {
-				events[i].StartTime = ""
-				events[i].EndTime = ""
+
+			if !closestTime.IsZero() {
+				util.LOGGER.Info("GET /api/events: closest time not zero")
+				startTime = closestTime.Format(time.RFC3339)
 			}
 		}
+
+		// Build category (only if published)
+		category := Category{}
+		if event.Category.Status == "published" {
+			category = event.Category.Category
+		}
+
+		// Create event info
+		eventInfo := EventInfo{
+			ID:           event.ID,
+			Name:         event.Name,
+			Address:      event.Address,
+			City:         event.City,
+			Country:      event.Country,
+			PreviewImage: event.PreviewImage,
+			Category:     category,
+			StartTime:    startTime,
+			BasePrice:    basePrice,
+		}
+
+		// Remap preview_image ID to link
+		if eventInfo.PreviewImage != "" {
+			eventInfo.PreviewImage = util.CreateImageLink(eventInfo.PreviewImage)
+		}
+
+		events = append(events, eventInfo)
 	}
 
-	return events
-}
-
-// Category represents a category from the database
-type Category struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-// CategoryListResponse represents the response for list categories
-type CategoryListResponse struct {
-	Data []Category `json:"data"`
+	// Return empty array if no events found
+	ctx.JSON(http.StatusOK, events)
 }
 
 // GetCategories godoc
@@ -524,11 +515,11 @@ type CategoryListResponse struct {
 // @Tags         Events
 // @Accept       json
 // @Produce      json
-// @Success      200  {object}  CategoryListResponse  "List of categories retrieved successfully"
+// @Success      200  {array}  Category "List of categories retrieved successfully"
 // @Failure      401  {object}  ErrorResponse         "Unauthorized access"
 // @Failure      500  {object}  ErrorResponse         "Internal server error"
 // @Security BearerAuth
-// @Router       /api/events/categories [get]
+// @Router       /api/categories [get]
 func (server *Server) GetCategories(ctx *gin.Context) {
 	// Get access token
 	token := server.GetToken(ctx)
@@ -539,7 +530,7 @@ func (server *Server) GetCategories(ctx *gin.Context) {
 
 	// Build the query URL
 	queryParams := url.Values{}
-	queryParams.Add("fields", "id,name")
+	queryParams.Add("fields", "id,name,description")
 	queryParams.Add("sort", "name")
 	queryParams.Add("limit", "-1")
 
@@ -556,7 +547,7 @@ func (server *Server) GetCategories(ctx *gin.Context) {
 
 	// Parse response from Directus request
 	var directusResp struct {
-		Data []map[string]any `json:"data"`
+		Data []Category `json:"data"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
@@ -565,18 +556,5 @@ func (server *Server) GetCategories(ctx *gin.Context) {
 		return
 	}
 
-	// Map result
-	categories := make([]Category, 0, len(directusResp.Data))
-	for _, item := range directusResp.Data {
-		category := Category{}
-		if id, ok := item["id"].(string); ok {
-			category.ID = id
-		}
-		if name, ok := item["name"].(string); ok {
-			category.Name = name
-		}
-		categories = append(categories, category)
-	}
-
-	ctx.JSON(http.StatusOK, CategoryListResponse{Data: categories})
+	ctx.JSON(http.StatusOK, directusResp.Data)
 }

@@ -396,103 +396,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/events": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Returns a paginated list of events with optional filters for search, category, location, date, and status.\nIf ` + "`" + `chose_date` + "`" + ` is provided, only events that are active during that date will be returned.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Events"
-                ],
-                "summary": "Retrieve list of events",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Search by event title or description",
-                        "name": "search",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by category ID",
-                        "name": "category",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by location",
-                        "name": "location",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter events active on this date (YYYY-MM-DD or ISO format)",
-                        "name": "chose_date",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by status (default: published)",
-                        "name": "status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Sort field (default: -date_created)",
-                        "name": "sort",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Limit number of items (default: 20, max: 100)",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Offset for pagination (default: 0)",
-                        "name": "offset",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "List of events retrieved successfully",
-                        "schema": {
-                            "$ref": "#/definitions/api.EventListResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid query parameters",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized access",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error or Directus failure",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/events/categories": {
+        "/api/categories": {
             "get": {
                 "security": [
                     {
@@ -514,7 +418,103 @@ const docTemplate = `{
                     "200": {
                         "description": "List of categories retrieved successfully",
                         "schema": {
-                            "$ref": "#/definitions/api.CategoryListResponse"
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/api.Category"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized access",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/events": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a list of published events with minimal information",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "List all events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by event name (case-insensitive contains)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by city or country (case-insensitive contains)",
+                        "name": "location",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by category name (case-insensitive contains)",
+                        "name": "category",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by minimum base price",
+                        "name": "min_price",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by maximum base price",
+                        "name": "max_price",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Limit number of results (default: 50)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Offset for pagination (default: 0)",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field (default: -date_created). Use - prefix for descending",
+                        "name": "sort",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of events retrieved successfully",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/api.EventInfo"
+                            }
                         }
                     },
                     "401": {
@@ -563,7 +563,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Event details retrieved successfully",
                         "schema": {
-                            "$ref": "#/definitions/api.Event"
+                            "$ref": "#/definitions/api.EventDetail"
                         }
                     },
                     "400": {
@@ -578,8 +578,106 @@ const docTemplate = `{
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
+                    "404": {
+                        "description": "Event not found or not published",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
                     "500": {
                         "description": "Internal server error or failed to communicate with Directus",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/memberships": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves all published membership tiers sorted by resulting points in ascending order.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Memberships"
+                ],
+                "summary": "List all published membership tiers",
+                "responses": {
+                    "200": {
+                        "description": "List of memberships retrieved successfully",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/api.MembershipTier"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized access",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error or failed to communicate with Directus",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/memberships/{user_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Calculate points from total payments (100,000 VND = 10 points) and determine tier",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Memberships"
+                ],
+                "summary": "Get customer membership info",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Customer membership info",
+                        "schema": {
+                            "$ref": "#/definitions/api.MembershipResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid user ID",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -687,6 +785,9 @@ const docTemplate = `{
         "api.Category": {
             "type": "object",
             "properties": {
+                "description": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -695,14 +796,17 @@ const docTemplate = `{
                 }
             }
         },
-        "api.CategoryListResponse": {
+        "api.Creator": {
             "type": "object",
             "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/api.Category"
-                    }
+                "email": {
+                    "type": "string"
+                },
+                "first_name": {
+                    "type": "string"
+                },
+                "last_name": {
+                    "type": "string"
                 }
             }
         },
@@ -714,19 +818,97 @@ const docTemplate = `{
                 }
             }
         },
-        "api.Event": {
+        "api.EventDetail": {
             "type": "object",
             "properties": {
-                "capacity": {
+                "address": {
+                    "type": "string"
+                },
+                "categories": {
+                    "$ref": "#/definitions/api.Category"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "country": {
+                    "type": "string"
+                },
+                "creator": {
+                    "$ref": "#/definitions/api.Creator"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "event_schedules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.EventSchedule"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "preview_image": {
+                    "type": "string"
+                },
+                "seat_zones": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.SeatZone"
+                    }
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "tickets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.Ticket"
+                    }
+                }
+            }
+        },
+        "api.EventInfo": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "base_price": {
+                    "description": "Minimum ticket price",
                     "type": "integer"
                 },
                 "category": {
+                    "$ref": "#/definitions/api.Category"
+                },
+                "city": {
                     "type": "string"
                 },
-                "date_created": {
+                "country": {
                     "type": "string"
                 },
-                "description": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "preview_image": {
+                    "type": "string"
+                },
+                "start_time": {
+                    "description": "Closest upcoming schedule time",
+                    "type": "string"
+                }
+            }
+        },
+        "api.EventSchedule": {
+            "type": "object",
+            "properties": {
+                "end_checkin_time": {
                     "type": "string"
                 },
                 "end_time": {
@@ -735,43 +917,11 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "image": {
+                "start_checkin_time": {
                     "type": "string"
-                },
-                "location": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "organizer": {
-                    "type": "string"
-                },
-                "price": {
-                    "type": "number"
                 },
                 "start_time": {
                     "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "tickets_sold": {
-                    "type": "integer"
-                }
-            }
-        },
-        "api.EventListResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/api.Event"
-                    }
-                },
-                "meta": {
-                    "$ref": "#/definitions/api.Meta"
                 }
             }
         },
@@ -818,20 +968,44 @@ const docTemplate = `{
                 }
             }
         },
-        "api.Meta": {
+        "api.MembershipResponse": {
             "type": "object",
             "properties": {
-                "filter_count": {
+                "discount": {
+                    "type": "number"
+                },
+                "early_buy_time": {
                     "type": "integer"
                 },
-                "limit": {
+                "points": {
                     "type": "integer"
                 },
-                "offset": {
+                "tier": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.MembershipTier": {
+            "type": "object",
+            "properties": {
+                "base_point": {
                     "type": "integer"
                 },
-                "total_count": {
+                "discount": {
+                    "description": "Can be string or number from Directus",
+                    "type": "number"
+                },
+                "early_buy_time": {
                     "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "tier": {
+                    "type": "string"
                 }
             }
         },
@@ -919,11 +1093,88 @@ const docTemplate = `{
                 }
             }
         },
+        "api.Seat": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "seat_number": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.SeatZone": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "seats": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.Seat"
+                    }
+                },
+                "total_seats": {
+                    "type": "integer"
+                }
+            }
+        },
         "api.SuccessMessage": {
             "type": "object",
             "properties": {
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "api.Ticket": {
+            "type": "object",
+            "properties": {
+                "base_price": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "rank": {
+                    "type": "string"
+                },
+                "ticket_selling_schedules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.TicketSellingSchedule"
+                    }
+                }
+            }
+        },
+        "api.TicketSellingSchedule": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "integer"
+                },
+                "end_selling_time": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "start_selling_time": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },

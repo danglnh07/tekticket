@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"tekticket/util"
 
 	"github.com/gin-gonic/gin"
@@ -12,21 +14,53 @@ import (
 
 // Response structure
 type MembershipResponse struct {
-	UserID        string  `json:"user_id"`
-	Points        int     `json:"points"`
-	Tier          string  `json:"tier"`
-	Discount      float64 `json:"discount"`
-	EarlyBuyTime  int     `json:"early_buy_time"`
-	LifetimeSpent float64 `json:"Amount"`
+	Points       int     `json:"points"`
+	Tier         string  `json:"tier"`
+	Discount     float64 `json:"discount"`
+	EarlyBuyTime int     `json:"early_buy_time"`
+}
+
+// Implement float64 custom unmarshal JSON that handle both float and string
+type DecimalFloat float64
+
+func (df *DecimalFloat) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as float64 first
+	var f float64
+	if err := json.Unmarshal(data, &f); err == nil {
+		*df = DecimalFloat(f)
+		return nil
+	}
+
+	// If that fails, try as string
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+
+	// Parse string to float
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return err
+	}
+
+	*df = DecimalFloat(f)
+	return nil
 }
 
 type MembershipTier struct {
-	ID           string      `json:"id"`
-	Tier         string      `json:"tier"`
-	BasePoint    int         `json:"base_point"`
-	Discount     interface{} `json:"discount"` // Can be string or number from Directus
-	EarlyBuyTime int         `json:"early_buy_time"`
-	Status       string      `json:"status"`
+	ID           string       `json:"id"`
+	Tier         string       `json:"tier"`
+	BasePoint    int          `json:"base_point"`
+	Discount     DecimalFloat `json:"discount"` // Can be string or number from Directus
+	EarlyBuyTime int          `json:"early_buy_time"`
+	Status       string       `json:"status"`
+}
+
+// User memberships log. Since we only use this to calculate the current total membership points, we don't return
+// (and should never return) to the end user
+type UserMembershipLog struct {
+	ID             string `json:"id"`
+	ResultingPoint int    `json:"resulting_points"`
 }
 
 // GetUserMembership godoc
@@ -39,135 +73,129 @@ type MembershipTier struct {
 // @Success      200  {object}  MembershipResponse  "Customer membership info"
 // @Failure      400  {object}  ErrorResponse        "Invalid user ID"
 // @Failure      500  {object}  ErrorResponse        "Internal server error"
+// @Security BearerAuth
 // @Router       /api/memberships/{user_id} [get]
 func (server *Server) GetUserMembership(ctx *gin.Context) {
-	userID := ctx.Param("user_id")
+	// Get access token
+	token := server.GetToken(ctx)
+	if token == "" {
+		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
+		return
+	}
+
+	// Get user ID
+	userID := ctx.Param("id")
 	if userID == "" {
 		ctx.JSON(http.StatusBadRequest, ErrorResponse{"User ID is required"})
 		return
 	}
 
-	// Step 1: Get all bookings for this customer
-	bookingsURL := fmt.Sprintf("%s/items/bookings?filter[customer_id][_eq]=%s&fields=id",
-		server.config.DirectusAddr, userID)
-	bookingsResp, status, err := util.MakeRequest("GET", bookingsURL, nil, server.config.DirectusStaticToken)
+	// To get the user current point, we just need to get the latest log of that user, resulting_points would be the current point
+	queryParams := url.Values{}
+	fields := []string{"id", "resulting_points"}
+	queryParams.Add("fields", strings.Join(fields, ","))
+	queryParams.Add("filter[customer_id][_eq]", userID)
+	queryParams.Add("sort", "-date_updated")
+	directusURL := fmt.Sprintf("%s/items/user_membership_logs/?%s", server.config.DirectusAddr, queryParams.Encode())
+
+	// Make request to Directus
+	resp, status, err := util.MakeRequest("GET", directusURL, nil, token)
 	if err != nil {
-		util.LOGGER.Error("GET /api/memberships/:user_id: failed to get bookings", "error", err)
+		util.LOGGER.Error("GET api/memberships/:id: failed to make request to Directus", "error", err)
 		ctx.JSON(status, ErrorResponse{err.Error()})
 		return
 	}
+	defer resp.Body.Close()
 
-	var bookingsData struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
+	// Parse Directus response
+	var directusResp struct {
+		Data []UserMembershipLog `json:"data"`
 	}
 
-	if err := json.NewDecoder(bookingsResp.Body).Decode(&bookingsData); err != nil {
-		util.LOGGER.Error("GET /api/memberships/:user_id: failed to decode bookings", "error", err)
+	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
+		util.LOGGER.Error("GET /api/memberships/:id: failed to parse Directus response", "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
 
-	// Step 2: Calculate total payments for these bookings
-	lifetimeSpent := 0.0
-	if len(bookingsData.Data) > 0 {
-		// Get sum of successful payments for each booking
-		for _, bookingID := range bookingsData.Data {
-			paymentURL := fmt.Sprintf("%s/items/payments?aggregate[sum]=amount&filter[status][_eq]=success&filter[booking_id][_eq]=%s",
-				server.config.DirectusAddr, bookingID.ID)
-			paymentResp, _, err := util.MakeRequest("GET", paymentURL, nil, server.config.DirectusStaticToken)
-			if err == nil {
-				var paymentData struct {
-					Data []struct {
-						Sum struct {
-							Amount string `json:"amount"` // Directus returns as string
-						} `json:"sum"`
-					} `json:"data"`
-				}
-				if err := json.NewDecoder(paymentResp.Body).Decode(&paymentData); err == nil {
-					if len(paymentData.Data) > 0 {
-						if amount, err := strconv.ParseFloat(paymentData.Data[0].Sum.Amount, 64); err == nil {
-							lifetimeSpent += amount
-						}
-					}
-				}
-			}
-		}
+	// When an account is created, their would be a log created for them, so we can assume that at least 1 record is returned
+	result := MembershipResponse{
+		Points: directusResp.Data[0].ResultingPoint,
 	}
 
-	// Step 3: Calculate points (100,000 VND = 10 points)
-	points := int(lifetimeSpent / 10000) // 100000 VND = 10 points, so divide by 10000
-
-	// Step 3: Get all published membership tiers from Directus
-	tiersURL := fmt.Sprintf("%s/items/memberships?filter[status][_eq]=published&sort[]=base_point&fields=*",
-		server.config.DirectusAddr)
-	tiersResp, status, err := util.MakeRequest("GET", tiersURL, nil, server.config.DirectusStaticToken)
-	if err != nil {
-		util.LOGGER.Error("GET /api/memberships/:user_id: failed to get tiers", "error", err)
-		ctx.JSON(status, ErrorResponse{err.Error()})
+	// Get the list of all membership to determine the current user rank and privilege
+	// Since the membership return should be sorted by its base point, we just have to iterate over it and find the largest
+	// tier with base point lower or equal than current point
+	memberships := server.listMemberships(ctx)
+	if memberships == nil {
 		return
 	}
 
-	var tiersData struct {
+	for _, membership := range memberships {
+		if membership.BasePoint <= result.Points {
+			result.Tier = membership.Tier
+			result.EarlyBuyTime = membership.EarlyBuyTime
+			result.Discount = float64(membership.Discount)
+		} else {
+			break
+		}
+	}
+
+	ctx.JSON(http.StatusOK, result)
+}
+
+// ListMemberships godoc
+// @Summary      List all published membership tiers
+// @Description  Retrieves all published membership tiers sorted by resulting points in ascending order.
+// @Tags         Memberships
+// @Accept       json
+// @Produce      json
+// @Success      200  {array}   MembershipTier    "List of memberships retrieved successfully"
+// @Failure      401  {object}  ErrorResponse     "Unauthorized access"
+// @Failure      500  {object}  ErrorResponse     "Internal server error or failed to communicate with Directus"
+// @Security BearerAuth
+// @Router       /api/memberships [get]
+func (server *Server) ListMemberships(ctx *gin.Context) {
+	// Get the list of all memberships
+	memberships := server.listMemberships(ctx)
+	if memberships == nil {
+		// The helper already handle error return to client, so we just return here
+		return
+	}
+	ctx.JSON(http.StatusOK, memberships)
+}
+
+// Helper method: Get the list of all memberships
+func (server *Server) listMemberships(ctx *gin.Context) []MembershipTier {
+	// Get access token
+	token := server.GetToken(ctx)
+	if token == "" {
+		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
+		return nil
+	}
+
+	// Get the list of all memberships. It should be a short list, so we don't need to provide any paging here
+	url := fmt.Sprintf("%s/items/memberships?filter[status][_eq]=published&sort=base_point", server.config.DirectusAddr)
+	resp, status, err := util.MakeRequest("GET", url, nil, token)
+	if err != nil {
+		util.LOGGER.Error(
+			fmt.Sprintf("%s %s: failed to get the list of all memberships", ctx.Request.Method, ctx.FullPath()), "error", err)
+		ctx.JSON(status, ErrorResponse{err.Error()})
+		return nil
+	}
+	defer resp.Body.Close()
+
+	// Parse Directus response
+	var directusResp struct {
 		Data []MembershipTier `json:"data"`
 	}
 
-	if err := json.NewDecoder(tiersResp.Body).Decode(&tiersData); err != nil {
-		util.LOGGER.Error("GET /api/memberships/:user_id: failed to decode tiers", "error", err)
+	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
+		util.LOGGER.Error(
+			fmt.Sprintf("%s %s: failed to get the list of all memberships", ctx.Request.Method, ctx.FullPath()), "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
-		return
+		return nil
 	}
 
-	// Step 4: Determine tier based on points
-	tier, discount, earlyBuyTime := determineTierByPoints(tiersData.Data, points)
-
-	// Step 5: Return response
-	ctx.JSON(http.StatusOK, MembershipResponse{
-		UserID:        userID,
-		Points:        points,
-		Tier:          tier,
-		Discount:      discount,
-		EarlyBuyTime:  earlyBuyTime,
-		LifetimeSpent: lifetimeSpent,
-	})
-}
-
-// Helper function to safely parse discount from interface{} (can be string, number, or null)
-func parseDiscount(val interface{}) float64 {
-	if val == nil {
-		return 0.0
-	}
-
-	switch v := val.(type) {
-	case float64:
-		return v
-	case string:
-		if parsed, err := strconv.ParseFloat(v, 64); err == nil {
-			return parsed
-		}
-	case int:
-		return float64(v)
-	}
-
-	return 0.0
-}
-
-// Helper function to determine tier based on current points
-func determineTierByPoints(tiers []MembershipTier, points int) (string, float64, int) {
-	// Default values
-	selectedTier := "bronze"
-	discount := 0.0
-	earlyBuyTime := 0
-
-	// Find highest tier that customer qualifies for based on points
-	for _, tier := range tiers {
-		if points >= tier.BasePoint {
-			selectedTier = tier.Tier
-			discount = parseDiscount(tier.Discount)
-			earlyBuyTime = tier.EarlyBuyTime
-		}
-	}
-
-	return selectedTier, discount, earlyBuyTime
+	return directusResp.Data
 }
