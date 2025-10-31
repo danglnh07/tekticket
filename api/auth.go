@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -295,13 +296,20 @@ func (server *Server) Login(ctx *gin.Context) {
 		return
 	}
 
-	// Get user ID from access token
-	var tokenPayload map[string]any
-	if err := json.Unmarshal([]byte(util.Decode(strings.Split(directusResp.Data.AccessToken, ".")[1])), &tokenPayload); err != nil {
-		// This is just additional, not necessary to stop the whole API here with error
-		util.LOGGER.Error("POST /api/auth/login: failed to get user ID from access token", "error", err)
+	// Get user ID from access token. Note that JWT payload should use base64.RawURLEncoding instead of base64.URLEncoding
+	// Even if this failed for some reasons, the consumer (client) can still get the user ID from the JWT access token, so we won't
+	// return error here.
+	jwtPayload, err := base64.RawURLEncoding.DecodeString(strings.Split(directusResp.Data.AccessToken, ".")[1])
+	if err != nil {
+		util.LOGGER.Error("POST /api/auth/login: failed to decode JWT payload", "error", err)
 	} else {
-		directusResp.Data.ID = tokenPayload["id"].(string)
+		// If decode success, try unmarshal payload to get user ID
+		var tokenPayload map[string]any
+		if err := json.Unmarshal(jwtPayload, &tokenPayload); err != nil {
+			util.LOGGER.Error("POST /api/auth/login: failed to get user ID from access token", "error", err)
+		} else {
+			directusResp.Data.ID = tokenPayload["id"].(string)
+		}
 	}
 
 	ctx.JSON(http.StatusOK, directusResp.Data)

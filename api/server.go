@@ -30,10 +30,9 @@ type Server struct {
 
 	// Dependencies
 	distributor   worker.TaskDistributor
-	uploadService *uploader.CloudinaryService
 	mailService   notify.MailService
-
-	config *util.Config
+	uploadService *uploader.CloudinaryService
+	config        *util.Config
 }
 
 // Constructor method for server struct
@@ -82,6 +81,24 @@ func (server *Server) RegisterHandler() {
 			profile.GET("", server.GetProfile)
 			profile.PUT("", server.UpdateProfile)
 		}
+
+		categories := api.Group("/categories")
+		{
+			categories.GET("", server.GetCategories)
+		}
+
+		events := api.Group("/events")
+		{
+			events.GET("", server.ListEvents)
+			events.GET("/:id", server.GetEvent)
+		}
+
+		// Memberships routes
+		memberships := api.Group("/memberships")
+		{
+			memberships.GET("", server.ListMemberships)
+			memberships.GET("/:id", server.GetUserMembership)
+		}
 	}
 
 	// Swagger docs
@@ -89,10 +106,7 @@ func (server *Server) RegisterHandler() {
 
 	// Static handler
 	server.router.GET("/images/:id", func(ctx *gin.Context) {
-		// Get asset ID
 		id := ctx.Param("id")
-
-		// Get the image
 		resp, status, err := util.MakeRequest("GET", server.config.DirectusAddr+"/assets/"+id, nil, server.config.DirectusStaticToken)
 		if err != nil {
 			util.LOGGER.Error("GET /images/:id: failed to get assets", "error", err)
@@ -100,7 +114,6 @@ func (server *Server) RegisterHandler() {
 			return
 		}
 
-		// Copy content type and body
 		ctx.Header("Content-Type", resp.Header.Get("Content-Type"))
 		io.Copy(ctx.Writer, resp.Body)
 	})
