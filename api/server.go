@@ -108,6 +108,12 @@ func (server *Server) RegisterHandler() {
 		{
 			webhook.POST("/telegram", server.TelegramWebhook)
 		}
+
+		// Notification
+		notification := api.Group("/notifications")
+		{
+			notification.POST("/webhook", server.NotificationWebhook)
+		}
 	}
 
 	// Swagger docs

@@ -59,9 +59,28 @@ func main() {
 		util.LOGGER.Error("Failed to setup chatbot", "error", err)
 		os.Exit(1)
 	}
+	ablyService, err := notify.NewAblyService(config.AblyApiKey)
+	if err != nil {
+		util.LOGGER.Error("Failed to initialize Ably service", "error", err)
+		os.Exit(1)
+	}
 
 	// Start the background server in separate goroutine (since it's will block the main thread)
-	go StartBackgroundProcessor(asynq.RedisClientOpt{Addr: config.RedisAddr}, queries, mailService, config)
+	for range 5 { // This should be configure, but let's just use a constant for now
+		go func() {
+			if err := StartBackgroundProcessor(
+				asynq.RedisClientOpt{Addr: config.RedisAddr},
+				queries,
+				mailService,
+				ablyService,
+				bot,
+				config,
+			); err != nil {
+				util.LOGGER.Error("task failed", "error", err)
+			}
+		}()
+
+	}
 
 	// Start server
 	server := api.NewServer(queries, distributor, mailService, cld, bot, config)
@@ -75,10 +94,12 @@ func StartBackgroundProcessor(
 	redisOpts asynq.RedisClientOpt,
 	queries *db.Queries,
 	mailService notify.MailService,
+	ablyService *notify.AblyService,
+	bot *bot.Chatbot,
 	config *util.Config,
 ) error {
 	// Create the processor
-	processor := worker.NewRedisTaskProcessor(redisOpts, queries, mailService, config)
+	processor := worker.NewRedisTaskProcessor(redisOpts, queries, mailService, ablyService, bot, config)
 
 	// Start process tasks
 	return processor.Start()

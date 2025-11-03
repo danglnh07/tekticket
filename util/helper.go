@@ -181,3 +181,14 @@ func Decode(str string) string {
 	}
 	return string(data)
 }
+
+// Helper: format HTML warning message for Telegram
+func FormatWarningHTML(text string) string {
+	return fmt.Sprintf("<b>%s</b>", strings.ToUpper(text))
+}
+
+// Helper: format HTML notification message for Telegram
+func FormatNotificationHTML(title, body string) string {
+	// Body should already be an HTML template, so we don't do anything to it
+	return fmt.Sprintf("<h1>%s</h1><br>%s", strings.ToUpper(title), body)
+}

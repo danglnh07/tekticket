@@ -4,11 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"tekticket/db"
+	"tekticket/service/bot"
 	"tekticket/service/notify"
 	"tekticket/util"
 
 	"github.com/hibiken/asynq"
 )
+
+var queues = map[string]int{
+	"low":      1,
+	"default":  3,
+	"critical": 6,
+}
+
+func IsQueueLevelExists(queue string) bool {
+	_, ok := queues[queue]
+	return ok
+}
 
 // Task processor interface
 type TaskProcessor interface {
@@ -25,6 +37,8 @@ type RedisTaskProcessor struct {
 
 	// Dependencies
 	mailService notify.MailService
+	ablyService *notify.AblyService
+	bot         *bot.Chatbot
 
 	// Config
 	config *util.Config
@@ -35,12 +49,16 @@ func NewRedisTaskProcessor(
 	redisOpts asynq.RedisClientOpt,
 	queries *db.Queries,
 	mailService notify.MailService,
+	ablyService *notify.AblyService,
+	bot *bot.Chatbot,
 	config *util.Config,
 ) TaskProcessor {
 	return &RedisTaskProcessor{
-		server:      asynq.NewServer(redisOpts, asynq.Config{}),
+		server:      asynq.NewServer(redisOpts, asynq.Config{Queues: queues}),
 		queries:     queries,
 		mailService: mailService,
+		ablyService: ablyService,
+		bot:         bot,
 		config:      config,
 	}
 }
@@ -54,12 +72,12 @@ func (processor *RedisTaskProcessor) Start() error {
 		// Unmarshal payload
 		var payload SendVerifyEmailPayload
 		if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-			util.LOGGER.Error("failed to process task", "task", SendVerifyEmail, "error", err)
+			util.LOGGER.Error("failed to unmarshal task's payload", "task", SendVerifyEmail, "error", err)
 			return err
 		}
 
-		err := processor.SendVerifyEmail(payload)
-		if err != nil {
+		// Process
+		if err := processor.SendVerifyEmail(payload); err != nil {
 			util.LOGGER.Error("failed to process task", "task", SendVerifyEmail, "error", err)
 			return err
 		}
@@ -72,12 +90,12 @@ func (processor *RedisTaskProcessor) Start() error {
 		// Unmarshal payload
 		var payload SendResetPasswordPayload
 		if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-			util.LOGGER.Error("failed to process task", "task", SendResetPassword, "error", err)
+			util.LOGGER.Error("failed to unmarshal task's payload", "task", SendResetPassword, "error", err)
 			return err
 		}
 
-		err := processor.SendResetPassword(payload)
-		if err != nil {
+		// Process
+		if err := processor.SendResetPassword(payload); err != nil {
 			util.LOGGER.Error("failed to process task", "task", SendResetPassword, "error", err)
 			return err
 		}
@@ -85,6 +103,60 @@ func (processor *RedisTaskProcessor) Start() error {
 		util.LOGGER.Info("task success", "task", SendResetPassword)
 		return nil
 
+	})
+
+	mux.HandleFunc(SendEmailNotification, func(ctx context.Context, t *asynq.Task) error {
+		// Unmarshal payload
+		var payload SendNotificationPayload
+		if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+			util.LOGGER.Error("failed to unmarshal task's payload", "task", SendEmailNotification, "error", err)
+			return err
+		}
+
+		// Process
+		if err := processor.SendEmailNotification(payload.Dest.Email, payload.Title, payload.Body); err != nil {
+			util.LOGGER.Error("failed to process task", "task", SendEmailNotification, "error", err)
+			return err
+		}
+
+		util.LOGGER.Info("task success", "task", SendEmailNotification)
+		return nil
+	})
+
+	mux.HandleFunc(SendInAppNotification, func(ctx context.Context, t *asynq.Task) error {
+		// Unmarshal payload
+		var payload SendNotificationPayload
+		if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+			util.LOGGER.Error("failed to unmarshal task's payload", "task", SendInAppNotification, "error", err)
+			return err
+		}
+
+		// Process
+		if err := processor.SendInAppNotification(ctx, payload.Dest.Channel, payload.Name, payload.Title, payload.Body); err != nil {
+			util.LOGGER.Error("failed to process task", "task", SendInAppNotification, "error", err)
+			return err
+		}
+
+		util.LOGGER.Info("task success", "task", SendInAppNotification)
+		return nil
+	})
+
+	mux.HandleFunc(SendTelegramNotification, func(ctx context.Context, t *asynq.Task) error {
+		// Unmarshal payload
+		var payload SendNotificationPayload
+		if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+			util.LOGGER.Error("failed to unmarshal task's payload", "task", SendTelegramNotification, "error", err)
+			return err
+		}
+
+		// Process
+		if err := processor.SendTelegramNotification(payload.Dest.ChatID, payload.Title, payload.Body); err != nil {
+			util.LOGGER.Error("failed to process task", "task", SendTelegramNotification, "error", err)
+			return err
+		}
+
+		util.LOGGER.Info("task success", "task", SendTelegramNotification)
+		return nil
 	})
 
 	return processor.server.Start(mux)

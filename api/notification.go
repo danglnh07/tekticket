@@ -2,61 +2,59 @@ package api
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"tekticket/service/bot"
+	"tekticket/service/worker"
 	"tekticket/util"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hibiken/asynq"
 )
 
-type UserTelegram struct {
-	ID             string `json:"id"`
-	TelegramChatID string `json:"telegram_chat_id"`
-	UserID         string `json:"user_id"`
-}
-
+// Telegram webhook that will listen to any message that user send to the bot.
 func (server *Server) TelegramWebhook(ctx *gin.Context) {
-	// Instead of return a JSON using ctx.JSON, we'll send the message back to client
-
 	// Get the update request
 	var req bot.TelegramUpdate
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		util.LOGGER.Error("POST /api/webhook/telegram: failed to parse incoming request", "error", err)
-		// If we failed to even get the request message, then we cannot get the chatID -> cannot send message back.
-		// So in this step, we should return here
 		return
 	}
 
+	chatID := req.Message.Chat.ID
+	message := strings.TrimSpace(req.Message.Text)
+
 	// Send chat action indicate we are processing
-	if err := server.bot.SendChatAction(req.Message.Chat.ID, bot.CHAT_ACTION); err != nil {
+	if err := server.bot.SendChatAction(chatID, bot.CHAT_ACTION); err != nil {
 		util.LOGGER.Error("POST /api/webhook/telegram: failed to send chat action", "error", err)
 	}
 
-	// Try printing the chat ID and message content
-	util.LOGGER.Info("Telegram webhook update", "chat ID", req.Message.Chat.ID)
-	util.LOGGER.Info("Telegram webhook update", "message", req.Message.Text)
-
-	// Sanitizing text message
-	req.Message.Text = strings.TrimSpace(req.Message.Text)
-
-	// Check if this is a Telegram chatbot or just a simple message
-	segments := strings.Split(req.Message.Text, " ")
+	// Check if this is a Telegram chatbot command or just a simple message
+	segments := strings.Split(message, " ")
 	if len(segments) == 0 {
 		util.LOGGER.Warn("POST /api/webhook/telegram: user sent an empty message, ignore this message")
-		// Sending a long empty string is technically correct (client can send whatever they want), so we also don't send anything here
 		return
 	}
 
+	command := segments[0]
+	arguments := segments[1:]
+
 	// Act based on the command
-	switch {
-	case strings.HasPrefix(segments[0], "/start"):
+	switch command {
+	case "/start":
 		/*
 		 * Command: /start <YOUR_EMAIL> <YOUR_ROLE>
+		 * If role not provided, assume it to be customer
+		 * Flows:
+		 * 1. Check if this chatID has already be register in the user_telegrams collections
+		 * 2. If not reistered yet, check if credential provided is valid (email exists in database, role is valid)
+		 * 3. If all data is valid, create an instance user_telegram collection
 		 */
 
-		// Check if both email and role exists in the command
-		if len(segments) != 3 {
-			err := server.bot.SendMessage(req.Message.Chat.ID, "<b>LACK ARGUMENTS, MUST PROVIDE BOTH EMAIL AND ROLE</b>")
+		// Check if at least email exists in the command arguments
+		if len(arguments) == 0 {
+			err := server.bot.SendMessage(chatID, util.FormatWarningHTML("You must provide your email for registration!"))
 			if err != nil {
 				util.LOGGER.Error("POST /api/webhook/telegram: failed to send message", "error", err)
 			}
@@ -64,24 +62,31 @@ func (server *Server) TelegramWebhook(ctx *gin.Context) {
 		}
 
 		// Check if current chat has registered for Telegram service
-		var userTelegram []UserTelegram
-		url := fmt.Sprintf(
-			"%s/items/user_telegrams?fields=id,user_id,telegram_chat_id&filter[telegram_chat_id][_eq]=%d",
-			server.config.DirectusAddr,
-			req.Message.Chat.ID,
-		)
-		_, err := util.MakeRequest("GET", url, nil, server.config.DirectusStaticToken, &userTelegram)
-		if err != nil {
-			util.LOGGER.Error("POST /api/webhook/telegram: failed to check if this chat ID has been registered", "error", err)
-			err = server.bot.SendMessage(req.Message.Chat.ID, "<b>INTERNAL SERVER ERROR, PLEASE TRY AGAIN :(</b>")
+		if _, err := server.queries.GetCache(ctx, fmt.Sprintf("%d", chatID)); err != nil {
+			// Whether this is a cache miss or an actual error, we have no way to determine if the chatID already registered
+			// so we'll try to make a request to Directus to check
+			var userTelegram []map[string]any // We only care if there are any records, so a map is enough
+			url := fmt.Sprintf("%s/items/user_telegrams?fields=*&filter[telegram_chat_id][_eq]=%d", server.config.DirectusAddr, chatID)
+			_, err := util.MakeRequest("GET", url, nil, server.config.DirectusStaticToken, &userTelegram)
 			if err != nil {
-				util.LOGGER.Error("POST /api/webhook/telegram: failed to send message", "error", err)
+				util.LOGGER.Error("POST /api/webhook/telegram: failed to check if this chat ID has been registered", "error", err)
+				err = server.bot.SendMessage(chatID, util.FormatWarningHTML("Internal server error! Please try again"))
+				if err != nil {
+					util.LOGGER.Error("POST /api/webhook/telegram: failed to send message", "error", err)
+				}
+				return
 			}
-			return
-		}
 
-		if len(userTelegram) != 0 {
-			err = server.bot.SendMessage(req.Message.Chat.ID, "You're already registered, did you forget?")
+			if len(userTelegram) != 0 {
+				err = server.bot.SendMessage(chatID, "You're already registered, did you forget?")
+				if err != nil {
+					util.LOGGER.Error("POST /api/webhook/telegram: failed to send message", "error", err)
+				}
+				return
+			}
+		} else {
+			// If cache hit -> chatID already registered
+			err = server.bot.SendMessage(chatID, "You're already registered, did you forget?")
 			if err != nil {
 				util.LOGGER.Error("POST /api/webhook/telegram: failed to send message", "error", err)
 			}
@@ -90,17 +95,17 @@ func (server *Server) TelegramWebhook(ctx *gin.Context) {
 
 		// Get the list of all users with the provided email
 		var users []ProfileResponse // We only need the ID, so any struct that has ID is fined
-		url = fmt.Sprintf(
+		url := fmt.Sprintf(
 			"%s/users?fields=id&filter[email][_icontains]=%s&filter[role][name][_icontains]=%s",
 			server.config.DirectusAddr,
 			segments[1],
 			segments[2],
 		)
 
-		_, err = util.MakeRequest("GET", url, nil, server.config.DirectusStaticToken, &users)
+		_, err := util.MakeRequest("GET", url, nil, server.config.DirectusStaticToken, &users)
 		if err != nil {
 			util.LOGGER.Error("POST /api/webhook/telegram: failed to get the list of all users with provided email", "error", err)
-			err = server.bot.SendMessage(req.Message.Chat.ID, "<b>INTERNAL SERVER ERROR, PLEASE TRY AGAIN :(</b>")
+			err = server.bot.SendMessage(chatID, util.FormatWarningHTML("Internal server error! Please try again"))
 			if err != nil {
 				util.LOGGER.Error("POST /api/webhook/telegram: failed to send message", "error", err)
 			}
@@ -110,11 +115,7 @@ func (server *Server) TelegramWebhook(ctx *gin.Context) {
 		// Check if this user exists
 		if len(users) == 0 {
 			util.LOGGER.Warn("POST /api/webhook/telegram: email not registered", "error", err)
-			// Send message back to the client stating that this email is not exists
-			err = server.bot.SendMessage(
-				req.Message.Chat.ID,
-				"<b>THIS EMAIL WITH THIS ROLE IS NOT REGISTERED IN THE SYSTEM! PLEASE TRY ANOTHER</b>",
-			)
+			err = server.bot.SendMessage(chatID, "This email not exists in our system, please try another")
 			if err != nil {
 				util.LOGGER.Error("POST /api/webhook/telegram: failed to send message", "error", err)
 			}
@@ -130,7 +131,7 @@ func (server *Server) TelegramWebhook(ctx *gin.Context) {
 
 		if err != nil {
 			util.LOGGER.Error("POST /api/webhook/telegram: failed to create instance in user_telegram collection", "error", err)
-			err = server.bot.SendMessage(req.Message.Chat.ID, "<b>INTERNAL SERVER ERROR! WE ARE SORRY, PLEASE TRY AGAIN</b>")
+			err = server.bot.SendMessage(chatID, util.FormatWarningHTML("Internal server error! Please try again"))
 			if err != nil {
 				util.LOGGER.Error("POST /api/webhook/telegram: failed to send message", "error", err)
 			}
@@ -141,10 +142,80 @@ func (server *Server) TelegramWebhook(ctx *gin.Context) {
 		if err != nil {
 			util.LOGGER.Error("POST /api/webhook/telegram: failed to send message", "error", err)
 		}
+
+		// Store the current chatID into cache
+		server.queries.SetCache(ctx, fmt.Sprintf("%d", chatID), "", time.Hour) // The value can be whatever, we don't really care
 	default:
 		err := server.bot.SendMessage(req.Message.Chat.ID, "This is an echo message hehe: "+req.Message.Text)
 		if err != nil {
 			util.LOGGER.Error("POST /api/webhook/telegram: failed to send message", "error", err)
+		}
+	}
+}
+
+type NotificationRequest struct {
+	Name         string `json:"name"`          // Event name (in can be the notification category)
+	Title        string `json:"title"`         // Notification title
+	Body         string `json:"body"`          // Notification body
+	Queue        string `json:"queue"`         // The impact of this notification. It can be: low, default or critical
+	DestEmail    string `json:"dest_email"`    // The destination email, if allow sending email notification
+	DestInApp    string `json:"dest_inapp"`    // The channel to send the in app notification using Pub/Sub model
+	DestTelegram int    `json:"dest_telegram"` // The chat ID of telegram, if allow telegram notification
+}
+
+func (server *Server) NotificationWebhook(ctx *gin.Context) {
+	// This webhook is used for Directus's flows to send notification back to the server for processing
+	var req NotificationRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		util.LOGGER.Error("POST /api/notification/webhook: failed to parse request", "error", err)
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid request body"})
+		return
+	}
+
+	if req.Queue = strings.ToLower(req.Queue); !worker.IsQueueLevelExists(req.Queue) {
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Only accept low, default or critical for queue value"})
+	}
+
+	// Send notification to in app channel
+	if req.DestInApp != "" {
+		err := server.distributor.DistributeTask(ctx, worker.SendInAppNotification, req, asynq.MaxRetry(25), asynq.Queue(req.Queue))
+		if err != nil {
+			util.LOGGER.Error(
+				"POST /api/notifications/webhook: failed to distribute task",
+				"task", worker.SendInAppNotification,
+				"error", err,
+			)
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+			return
+		}
+	} else {
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"In app notification is required for all notifications"})
+		return
+	}
+
+	if req.DestTelegram != 0 {
+		err := server.distributor.DistributeTask(ctx, worker.SendInAppNotification, req, asynq.MaxRetry(25), asynq.Queue(req.Queue))
+		if err != nil {
+			util.LOGGER.Error(
+				"POST /api/notifications/webhook: failed to distribute task",
+				"task", worker.SendTelegramNotification,
+				"error", err,
+			)
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+			return
+		}
+	}
+
+	if req.DestEmail != "" {
+		err := server.distributor.DistributeTask(ctx, worker.SendInAppNotification, req, asynq.MaxRetry(25), asynq.Queue(req.Queue))
+		if err != nil {
+			util.LOGGER.Error(
+				"POST /api/notifications/webhook: failed to distribute task",
+				"task", worker.SendEmailNotification,
+				"error", err,
+			)
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+			return
 		}
 	}
 }

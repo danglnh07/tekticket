@@ -6,14 +6,6 @@ import (
 	"github.com/ably/ably-go/ably"
 )
 
-// Notification payload
-type NotificationPayload struct {
-	Channel string `json:"channel"`
-	Name    string `json:"name"`  // Event name
-	Title   string `json:"title"` // Notification title
-	Body    string `json:"body"`  // Notification body (can be HTML, markdown or plain text)
-}
-
 // Ably implementation
 type AblyService struct {
 	client *ably.REST
@@ -29,17 +21,20 @@ func NewAblyService(apiKey string) (*AblyService, error) {
 	return &AblyService{client: client}, nil
 }
 
-// Publish message to a channel
-func (service *AblyService) Publish(ctx context.Context, payload NotificationPayload) error {
+// Publish message to a channel.
+// channelName is the name of the channel to send the message to. It must be correct, or else the other side couldn't get it
+// eventName is the name of the event that fire this notification.
+// data can be anything, but it should be a structured data contains the notification's title and body
+func (service *AblyService) Publish(ctx context.Context, channelName, eventName string, data any) error {
 	// Get channel
-	channel := service.client.Channels.Get(payload.Channel)
+	channel := service.client.Channels.Get(channelName)
 
 	// Build message
 	message := &ably.Message{
-		Name: payload.Name,
-		Data: payload,
+		Name: eventName,
+		Data: data,
 	}
 
 	// Publish message
-	return channel.Publish(ctx, payload.Name, message)
+	return channel.Publish(ctx, eventName, message)
 }
