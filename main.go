@@ -66,7 +66,8 @@ func main() {
 	}
 
 	// Start the background server in separate goroutine (since it's will block the main thread)
-	for range 5 { // This should be configure, but let's just use a constant for now
+	util.LOGGER.Info("Max workers", "val", config.MaxWorkers)
+	for range config.MaxWorkers { // This should be configure, but let's just use a constant for now
 		go func() {
 			if err := StartBackgroundProcessor(
 				asynq.RedisClientOpt{Addr: config.RedisAddr},

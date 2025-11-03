@@ -37,6 +37,7 @@ type Config struct {
 	AblyApiKey           string `json:"ably_api_key"`           // Ably API key
 	TelegramBotToken     string `json:"telegram_bot_token"`     // Telegram bot token
 	ServerDomain         string `json:"server_domain"`          // Server domain, it can be Ngrok generated, or a custom domain
+	MaxWorkers           int    `json:"max_workers"`            // The total of background workers running in the background
 }
 
 // Constructor method for Config struct
@@ -92,6 +93,7 @@ func (config *Config) LoadDynamicConfig() error {
 	config.TelegramBotToken = configs[0].TelegramBotToken
 	config.NgrokAuthToken = configs[0].NgrokAuthToken
 	config.ServerDomain = configs[0].ServerDomain
+	config.MaxWorkers = configs[0].MaxWorkers
 
 	return nil
 }
