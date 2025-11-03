@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -155,11 +154,6 @@ type directusTickets struct {
 	Status      string `json:"status"`
 }
 
-type directusSeatZones struct {
-	ID          string `json:"id"`
-	Description string `json:"description"`
-}
-
 // ============ API Handlers ============
 
 // CreateBooking godoc
@@ -273,17 +267,27 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 		ticket, _ := server.getTicketByID(token, item.TicketID)
 
 		// Calculate price with membership discount
-		price := server.calculatePriceWithDiscount(ctx, token, userID, ticket.BasePrice)
+		price := server.calculatePriceWithDiscount(token, userID, ticket.BasePrice)
 		totalAmount += price
 
 		// Create booking item
 		itemID := uuid.New().String()
+
+		// Generate QR code immediately to avoid null unique constraint violation
+		qrContent, err := server.generateQRContent(itemID)
+		if err != nil {
+			util.LOGGER.Error("POST /api/bookings: failed to generate QR content", "error", err, "item_id", itemID)
+			// Use a unique placeholder if QR generation fails
+			qrContent = fmt.Sprintf("pending_%s", itemID)
+		}
+
 		itemData := map[string]any{
 			"id":         itemID,
 			"booking_id": bookingID,
 			"ticket_id":  item.TicketID,
 			"seat_id":    item.SeatID,
 			"price":      price,
+			"qr":         qrContent,
 			"status":     "valid",
 		}
 
@@ -428,14 +432,16 @@ func (server *Server) Checkout(ctx *gin.Context) {
 	}
 	totalAmount := int(float64(subtotal) * (1 + paymentFeePercent/100))
 
-	// Stripe minimum charge amount for VND is 23,000
-	const minStripeAmountVND = 23000
+	// Stripe minimum charge amount: must convert to at least $0.50 USD
+	// At ~25,000 VND = $1 USD, minimum is approximately 12,500 VND
+	// We'll use 13,000 VND to have a safe buffer
+	const minStripeAmountVND = 13000
 	if totalAmount < minStripeAmountVND {
 		util.LOGGER.Error("POST /api/bookings/checkout: amount below Stripe minimum",
 			"amount", totalAmount,
 			"minimum", minStripeAmountVND)
 		ctx.JSON(http.StatusBadRequest, ErrorResponse{
-			fmt.Sprintf("Payment amount (%d VND) is below the minimum allowed (%d VND)",
+			fmt.Sprintf("Payment amount (%d VND) is below the minimum allowed (%d VND). Stripe requires amounts to convert to at least $0.50 USD.",
 				totalAmount, minStripeAmountVND)})
 		return
 	}
@@ -480,386 +486,6 @@ func (server *Server) Checkout(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, response)
-}
-
-// ConfirmPayment godoc
-// @Summary      Confirm payment for booking
-// @Description  Confirms payment with Stripe and completes the booking
-// @Tags         Bookings
-// @Accept       json
-// @Produce      json
-// @Param        request  body      ConfirmPaymentRequest  true  "Payment confirmation"
-// @Success      200  {object}  ConfirmPaymentResponse  "Payment confirmed"
-// @Failure      400  {object}  ErrorResponse           "Invalid request"
-// @Failure      401  {object}  ErrorResponse           "Unauthorized"
-// @Failure      404  {object}  ErrorResponse           "Payment not found"
-// @Failure      500  {object}  ErrorResponse           "Internal server error"
-// @Security BearerAuth
-// @Router       /api/bookings/confirm-payment [post]
-func (server *Server) ConfirmPayment(ctx *gin.Context) {
-	// Get access token
-	token := server.GetToken(ctx)
-	if token == "" {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
-		return
-	}
-
-	// Parse request
-	var req ConfirmPaymentRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{err.Error()})
-		return
-	}
-
-	// Get payment record
-	paymentRecord, err := server.getPaymentByID(token, req.PaymentID)
-	if err != nil {
-		ctx.JSON(http.StatusNotFound, ErrorResponse{"Payment not found"})
-		return
-	}
-
-	// Confirm payment with Stripe
-	returnURL := fmt.Sprintf("%s/booking-confirmation", server.config.FrontendURL)
-	intent, err := payment.ConfirmPaymentIntent(paymentRecord.TransactionID, req.PaymentMethod, returnURL)
-	if err != nil {
-		util.LOGGER.Error("POST /api/bookings/confirm-payment: failed to confirm payment", "error", err)
-
-		// Update payment status to failed
-		server.updatePaymentStatus(token, req.PaymentID, "failed", req.PaymentMethod)
-
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to confirm payment"})
-		return
-	}
-
-	// Map Stripe status to our status
-	paymentStatus := server.mapStripeStatus(string(intent.Status))
-
-	// Update payment record
-	err = server.updatePaymentStatus(token, req.PaymentID, paymentStatus, req.PaymentMethod)
-	if err != nil {
-		util.LOGGER.Error("POST /api/bookings/confirm-payment: failed to update payment", "error", err)
-	}
-
-	// If payment successful, complete the booking
-	if paymentStatus == "success" {
-		err = server.completeBooking(ctx, token, paymentRecord.BookingID)
-		if err != nil {
-			util.LOGGER.Error("POST /api/bookings/confirm-payment: failed to complete booking", "error", err)
-			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Payment successful but booking completion failed"})
-			return
-		}
-	}
-
-	response := ConfirmPaymentResponse{
-		PaymentID: req.PaymentID,
-		BookingID: paymentRecord.BookingID,
-		Status:    paymentStatus,
-		Amount:    paymentRecord.Amount,
-	}
-
-	ctx.JSON(http.StatusOK, response)
-}
-
-// GetBooking godoc
-// @Summary      Get booking details
-// @Description  Retrieves detailed information about a booking
-// @Tags         Bookings
-// @Accept       json
-// @Produce      json
-// @Param        id   path      string  true  "Booking ID"
-// @Success      200  {object}  BookingDetailResponse  "Booking details"
-// @Failure      401  {object}  ErrorResponse          "Unauthorized"
-// @Failure      404  {object}  ErrorResponse          "Booking not found"
-// @Failure      500  {object}  ErrorResponse          "Internal server error"
-// @Security BearerAuth
-// @Router       /api/bookings/{id} [get]
-func (server *Server) GetBooking(ctx *gin.Context) {
-	// Get access token
-	token := server.GetToken(ctx)
-	if token == "" {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
-		return
-	}
-
-	// Get user ID
-	userID, err := server.GetUserIDFromToken(token)
-	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Invalid token"})
-		return
-	}
-
-	// Get booking ID from path
-	bookingID := ctx.Param("id")
-	if bookingID == "" {
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Booking ID is required"})
-		return
-	}
-
-	// Get booking
-	booking, err := server.getBookingByID(token, bookingID)
-	if err != nil {
-		ctx.JSON(http.StatusNotFound, ErrorResponse{"Booking not found"})
-		return
-	}
-
-	// Verify ownership
-	if booking.CustomerID != userID {
-		ctx.JSON(http.StatusForbidden, ErrorResponse{"You don't have permission to view this booking"})
-		return
-	}
-
-	// Get event details
-	event, err := server.getEventByID(token, booking.EventID)
-	if err != nil {
-		util.LOGGER.Error("GET /api/bookings/:id: failed to get event", "error", err)
-	}
-
-	// Get booking items with details
-	items, err := server.getBookingItemsWithDetails(token, bookingID)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to get booking items"})
-		return
-	}
-
-	// Calculate total
-	totalAmount := 0
-	for _, item := range items {
-		totalAmount += item.Price
-	}
-
-	// Get payment info if exists
-	var paymentInfo *PaymentInfo
-	payments, err := server.getPaymentsByBookingID(token, bookingID)
-	if err == nil && len(payments) > 0 {
-		// Get the latest payment
-		latestPayment := payments[len(payments)-1]
-		paymentInfo = &PaymentInfo{
-			ID:            latestPayment.ID,
-			Amount:        latestPayment.Amount,
-			Status:        latestPayment.Status,
-			PaymentMethod: latestPayment.PaymentMethod,
-			CreatedAt:     latestPayment.CreatedAt,
-		}
-	}
-
-	// Calculate expiration
-	maxHoldMinutes := 5
-	settings, err := server.getSystemSettings(token)
-	if err == nil && settings != nil {
-		maxHoldMinutes = settings.MaxReservationHoldMinutes
-	}
-
-	createdTime, _ := time.Parse(time.RFC3339, booking.CreatedAt)
-	expiresAt := createdTime.Add(time.Duration(maxHoldMinutes) * time.Minute)
-
-	response := BookingDetailResponse{
-		ID:          booking.ID,
-		EventID:     booking.EventID,
-		EventName:   event.Name,
-		Status:      booking.Status,
-		Items:       items,
-		TotalAmount: totalAmount,
-		CreatedAt:   booking.CreatedAt,
-		ExpiresAt:   expiresAt.Format(time.RFC3339),
-		Payment:     paymentInfo,
-	}
-
-	ctx.JSON(http.StatusOK, response)
-}
-
-// ListMyBookings godoc
-// @Summary      List user's bookings
-// @Description  Retrieves all bookings for the authenticated user
-// @Tags         Bookings
-// @Accept       json
-// @Produce      json
-// @Param        status  query     string  false  "Filter by status (pending, complete, canceled, timeout)"
-// @Param        limit   query     int     false  "Limit results (default: 50)"
-// @Param        offset  query     int     false  "Offset for pagination (default: 0)"
-// @Success      200  {array}   BookingDetailResponse  "List of bookings"
-// @Failure      401  {object}  ErrorResponse          "Unauthorized"
-// @Failure      500  {object}  ErrorResponse          "Internal server error"
-// @Security BearerAuth
-// @Router       /api/bookings [get]
-func (server *Server) ListMyBookings(ctx *gin.Context) {
-	// Get access token
-	token := server.GetToken(ctx)
-	if token == "" {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
-		return
-	}
-
-	// Get user ID
-	userID, err := server.GetUserIDFromToken(token)
-	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Invalid token"})
-		return
-	}
-
-	// Build query parameters
-	queryParams := url.Values{}
-	queryParams.Add("filter[customer_id][_eq]", userID)
-
-	// Filter by status if provided
-	if status := ctx.Query("status"); status != "" {
-		queryParams.Add("filter[status][_eq]", status)
-	}
-
-	// Pagination
-	limit := 50
-	if limitStr := ctx.Query("limit"); limitStr != "" {
-		fmt.Sscanf(limitStr, "%d", &limit)
-	}
-	queryParams.Add("limit", fmt.Sprintf("%d", limit))
-
-	offset := 0
-	if offsetStr := ctx.Query("offset"); offsetStr != "" {
-		fmt.Sscanf(offsetStr, "%d", &offset)
-	}
-	queryParams.Add("offset", fmt.Sprintf("%d", offset))
-
-	// Sort by creation date (newest first)
-	queryParams.Add("sort", "-date_created")
-
-	// Make request
-	directusURL := fmt.Sprintf("%s/items/bookings?%s", server.config.DirectusAddr, queryParams.Encode())
-	var bookings []directusBooking
-	statusCode, err := util.MakeRequest("GET", directusURL, nil, token, &bookings)
-	if err != nil {
-		util.LOGGER.Error("GET /api/bookings: failed to get bookings", "error", err)
-		ctx.JSON(statusCode, ErrorResponse{err.Error()})
-		return
-	}
-
-	// Build response
-	response := make([]BookingDetailResponse, 0)
-	for _, booking := range bookings {
-		// Get event
-		event, _ := server.getEventByID(token, booking.EventID)
-
-		// Get items
-		items, _ := server.getBookingItemsWithDetails(token, booking.ID)
-
-		// Calculate total
-		totalAmount := 0
-		for _, item := range items {
-			totalAmount += item.Price
-		}
-
-		// Get payment
-		var paymentInfo *PaymentInfo
-		payments, err := server.getPaymentsByBookingID(token, booking.ID)
-		if err == nil && len(payments) > 0 {
-			latestPayment := payments[len(payments)-1]
-			paymentInfo = &PaymentInfo{
-				ID:            latestPayment.ID,
-				Amount:        latestPayment.Amount,
-				Status:        latestPayment.Status,
-				PaymentMethod: latestPayment.PaymentMethod,
-				CreatedAt:     latestPayment.CreatedAt,
-			}
-		}
-
-		// Calculate expiration
-		maxHoldMinutes := 5
-		settings, _ := server.getSystemSettings(token)
-		if settings != nil {
-			maxHoldMinutes = settings.MaxReservationHoldMinutes
-		}
-
-		createdTime, _ := time.Parse(time.RFC3339, booking.CreatedAt)
-		expiresAt := createdTime.Add(time.Duration(maxHoldMinutes) * time.Minute)
-
-		response = append(response, BookingDetailResponse{
-			ID:          booking.ID,
-			EventID:     booking.EventID,
-			EventName:   event.Name,
-			Status:      booking.Status,
-			Items:       items,
-			TotalAmount: totalAmount,
-			CreatedAt:   booking.CreatedAt,
-			ExpiresAt:   expiresAt.Format(time.RFC3339),
-			Payment:     paymentInfo,
-		})
-	}
-
-	ctx.JSON(http.StatusOK, response)
-}
-
-// CancelBooking godoc
-// @Summary      Cancel a booking
-// @Description  Cancels a pending booking and releases reserved seats
-// @Tags         Bookings
-// @Accept       json
-// @Produce      json
-// @Param        id   path      string  true  "Booking ID"
-// @Success      200  {object}  SuccessMessage  "Booking canceled successfully"
-// @Failure      400  {object}  ErrorResponse   "Booking cannot be canceled"
-// @Failure      401  {object}  ErrorResponse   "Unauthorized"
-// @Failure      404  {object}  ErrorResponse   "Booking not found"
-// @Failure      500  {object}  ErrorResponse   "Internal server error"
-// @Security BearerAuth
-// @Router       /api/bookings/{id}/cancel [post]
-func (server *Server) CancelBooking(ctx *gin.Context) {
-	// Get access token
-	token := server.GetToken(ctx)
-	if token == "" {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
-		return
-	}
-
-	// Get user ID
-	userID, err := server.GetUserIDFromToken(token)
-	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Invalid token"})
-		return
-	}
-
-	// Get booking ID
-	bookingID := ctx.Param("id")
-	if bookingID == "" {
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Booking ID is required"})
-		return
-	}
-
-	// Get booking
-	booking, err := server.getBookingByID(token, bookingID)
-	if err != nil {
-		ctx.JSON(http.StatusNotFound, ErrorResponse{"Booking not found"})
-		return
-	}
-
-	// Verify ownership
-	if booking.CustomerID != userID {
-		ctx.JSON(http.StatusForbidden, ErrorResponse{"You don't have permission to cancel this booking"})
-		return
-	}
-
-	// Check if booking can be canceled
-	if booking.Status != "pending" {
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Only pending bookings can be canceled"})
-		return
-	}
-
-	// Update booking status
-	updateData := map[string]any{
-		"status": "canceled",
-	}
-	directusURL := fmt.Sprintf("%s/items/bookings/%s", server.config.DirectusAddr, bookingID)
-	statusCode, err := util.MakeRequest("PATCH", directusURL, updateData, token, &map[string]any{})
-	if err != nil {
-		util.LOGGER.Error("POST /api/bookings/:id/cancel: failed to update booking", "error", err)
-		ctx.JSON(statusCode, ErrorResponse{err.Error()})
-		return
-	}
-
-	// Release all seats
-	items, _ := server.getBookingItems(token, bookingID)
-	for _, item := range items {
-		server.updateSeatStatus(token, item.SeatID, "empty", "")
-	}
-
-	ctx.JSON(http.StatusOK, SuccessMessage{"Booking canceled successfully"})
 }
 
 // ============ Helper Functions ============
@@ -948,184 +574,11 @@ func (server *Server) getBookingItems(token, bookingID string) ([]directusBookin
 	return items, nil
 }
 
-// Get booking items with details (ticket, seat info)
-func (server *Server) getBookingItemsWithDetails(token, bookingID string) ([]BookingItemDetail, error) {
-	items, err := server.getBookingItems(token, bookingID)
-	if err != nil {
-		return nil, err
-	}
-
-	result := make([]BookingItemDetail, 0)
-	for _, item := range items {
-		// Get ticket
-		ticket, err := server.getTicketByID(token, item.TicketID)
-		if err != nil {
-			continue
-		}
-
-		// Get seat
-		seat, err := server.getSeatByID(token, item.SeatID)
-		if err != nil {
-			continue
-		}
-
-		// Get seat zone
-		seatZone, err := server.getSeatZoneByID(token, seat.SeatZoneID)
-		if err != nil {
-			continue
-		}
-
-		result = append(result, BookingItemDetail{
-			ID:         item.ID,
-			TicketRank: ticket.Rank,
-			SeatNumber: seat.SeatNumber,
-			SeatZone:   seatZone.Description,
-			Price:      item.Price,
-			QRCode:     item.QR,
-			Status:     item.Status,
-		})
-	}
-
-	return result, nil
-}
-
-// Get seat zone by ID
-func (server *Server) getSeatZoneByID(token, seatZoneID string) (*directusSeatZones, error) {
-	directusURL := fmt.Sprintf("%s/items/seat_zones/%s", server.config.DirectusAddr, seatZoneID)
-	var seatZone directusSeatZones
-	_, err := util.MakeRequest("GET", directusURL, nil, token, &seatZone)
-	if err != nil {
-		return nil, err
-	}
-	return &seatZone, nil
-}
-
-// Get event by ID (minimal info)
-type directusEventMinimal struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-func (server *Server) getEventByID(token, eventID string) (*directusEventMinimal, error) {
-	directusURL := fmt.Sprintf("%s/items/events/%s?fields=id,name", server.config.DirectusAddr, eventID)
-	var event directusEventMinimal
-	_, err := util.MakeRequest("GET", directusURL, nil, token, &event)
-	if err != nil {
-		return nil, err
-	}
-	return &event, nil
-}
-
 // Delete booking
 func (server *Server) deleteBooking(token, bookingID string) error {
 	directusURL := fmt.Sprintf("%s/items/bookings/%s", server.config.DirectusAddr, bookingID)
 	_, err := util.MakeRequest("DELETE", directusURL, nil, token, &map[string]any{})
 	return err
-}
-
-// Get payment by ID
-func (server *Server) getPaymentByID(token, paymentID string) (*directusPayment, error) {
-	directusURL := fmt.Sprintf("%s/items/payments/%s", server.config.DirectusAddr, paymentID)
-	var payment directusPayment
-	_, err := util.MakeRequest("GET", directusURL, nil, token, &payment)
-	if err != nil {
-		return nil, err
-	}
-	return &payment, nil
-}
-
-// Get payments by booking ID
-func (server *Server) getPaymentsByBookingID(token, bookingID string) ([]directusPayment, error) {
-	queryParams := url.Values{}
-	queryParams.Add("filter[booking_id][_eq]", bookingID)
-	queryParams.Add("sort", "date_created")
-
-	directusURL := fmt.Sprintf("%s/items/payments?%s", server.config.DirectusAddr, queryParams.Encode())
-	var payments []directusPayment
-	_, err := util.MakeRequest("GET", directusURL, nil, token, &payments)
-	if err != nil {
-		return nil, err
-	}
-	return payments, nil
-}
-
-// Update payment status
-func (server *Server) updatePaymentStatus(token, paymentID, status, paymentMethod string) error {
-	updateData := map[string]any{
-		"status": status,
-	}
-	if paymentMethod != "" && paymentMethod != "pending" {
-		updateData["payment_method"] = paymentMethod
-	}
-
-	directusURL := fmt.Sprintf("%s/items/payments/%s", server.config.DirectusAddr, paymentID)
-	_, err := util.MakeRequest("PATCH", directusURL, updateData, token, &map[string]any{})
-	return err
-}
-
-// Map Stripe payment status to our status
-func (server *Server) mapStripeStatus(stripeStatus string) string {
-	switch stripeStatus {
-	case "succeeded":
-		return "success"
-	case "processing":
-		return "pending"
-	case "requires_payment_method", "requires_confirmation", "requires_action":
-		return "pending"
-	case "canceled":
-		return "failed"
-	default:
-		return "failed"
-	}
-}
-
-// Complete booking after successful payment
-func (server *Server) completeBooking(ctx context.Context, token, bookingID string) error {
-	// Update booking status to complete
-	updateData := map[string]any{
-		"status": "complete",
-	}
-	directusURL := fmt.Sprintf("%s/items/bookings/%s", server.config.DirectusAddr, bookingID)
-	_, err := util.MakeRequest("PATCH", directusURL, updateData, token, &map[string]any{})
-	if err != nil {
-		return err
-	}
-
-	// Update all seats to booked
-	items, err := server.getBookingItems(token, bookingID)
-	if err != nil {
-		return err
-	}
-
-	for _, item := range items {
-		// Update seat status
-		err := server.updateSeatStatus(token, item.SeatID, "booked", "")
-		if err != nil {
-			util.LOGGER.Error("completeBooking: failed to update seat", "error", err, "seat_id", item.SeatID)
-		}
-
-		// Generate QR code for each booking item
-		qrContent, err := server.generateQRContent(item.ID)
-		if err != nil {
-			util.LOGGER.Error("completeBooking: failed to generate QR", "error", err, "item_id", item.ID)
-			continue
-		}
-
-		// Update booking item with QR
-		updateItemData := map[string]any{
-			"qr": qrContent,
-		}
-		itemURL := fmt.Sprintf("%s/items/booking_items/%s", server.config.DirectusAddr, item.ID)
-		_, err = util.MakeRequest("PATCH", itemURL, updateItemData, token, &map[string]any{})
-		if err != nil {
-			util.LOGGER.Error("completeBooking: failed to save QR", "error", err, "item_id", item.ID)
-		}
-	}
-
-	// Update user points (earn points from payment)
-	// TODO: Implement user_membership_logs update
-
-	return nil
 }
 
 // Generate QR code content (encrypted booking item ID)
@@ -1150,7 +603,7 @@ func (server *Server) generateQRContent(bookingItemID string) (string, error) {
 }
 
 // Calculate price with membership discount
-func (server *Server) calculatePriceWithDiscount(ctx *gin.Context, token, userID string, basePrice int) int {
+func (server *Server) calculatePriceWithDiscount(token, userID string, basePrice int) int {
 	// Get user's membership tier
 	membership, err := server.getUserMembership(token, userID)
 	if err != nil {
