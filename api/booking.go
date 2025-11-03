@@ -393,10 +393,31 @@ func (server *Server) Checkout(ctx *gin.Context) {
 		return
 	}
 
+	// Check if booking has items
+	if len(bookingItems) == 0 {
+		util.LOGGER.Error("POST /api/bookings/checkout: no booking items found", "booking_id", req.BookingID)
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"No items found in booking"})
+		return
+	}
+
 	// Calculate total amount with payment fee
 	subtotal := 0
 	for _, item := range bookingItems {
 		subtotal += item.Price
+	}
+
+	util.LOGGER.Info("POST /api/bookings/checkout: calculated amounts",
+		"booking_id", req.BookingID,
+		"items_count", len(bookingItems),
+		"subtotal", subtotal)
+
+	// Validate subtotal
+	if subtotal <= 0 {
+		util.LOGGER.Error("POST /api/bookings/checkout: invalid subtotal",
+			"booking_id", req.BookingID,
+			"subtotal", subtotal)
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Booking items have invalid prices"})
+		return
 	}
 
 	// Apply payment fee (from system settings)
@@ -407,10 +428,24 @@ func (server *Server) Checkout(ctx *gin.Context) {
 	}
 	totalAmount := int(float64(subtotal) * (1 + paymentFeePercent/100))
 
+	// Stripe minimum charge amount for VND is 23,000
+	const minStripeAmountVND = 23000
+	if totalAmount < minStripeAmountVND {
+		util.LOGGER.Error("POST /api/bookings/checkout: amount below Stripe minimum",
+			"amount", totalAmount,
+			"minimum", minStripeAmountVND)
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{
+			fmt.Sprintf("Payment amount (%d VND) is below the minimum allowed (%d VND)",
+				totalAmount, minStripeAmountVND)})
+		return
+	}
+
 	// Create Stripe payment intent
 	intent, err := payment.CreatePaymentIntent(int64(totalAmount), stripe.CurrencyVND)
 	if err != nil {
-		util.LOGGER.Error("POST /api/bookings/checkout: failed to create payment intent", "error", err)
+		util.LOGGER.Error("POST /api/bookings/checkout: failed to create payment intent",
+			"error", err,
+			"amount", totalAmount)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to create payment intent"})
 		return
 	}
