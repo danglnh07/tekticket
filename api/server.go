@@ -107,7 +107,7 @@ func (server *Server) RegisterHandler() {
 		bookings := api.Group("/bookings")
 		{
 			bookings.POST("", server.CreateBooking)
-			bookings.POST("/checkout", server.Checkout)
+			bookings.POST("/confirm-payment", server.ConfirmPayment)
 		}
 
 		// Webhook handler

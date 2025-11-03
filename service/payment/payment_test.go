@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 func CreatePaymentMethod(t *testing.T) *stripe.PaymentMethod {
 	// Use Stripe's test token for Visa card
 	// Other available tokens: tok_mastercard, tok_amex, tok_discover, etc.
-	paymentMethod, err := createPaymentMethodFromToken("tok_visa")
+	paymentMethod, err := CreatePaymentMethodFromToken("tok_visa")
 	require.NoError(t, err)
 	require.NotNil(t, paymentMethod)
 	return paymentMethod

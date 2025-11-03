@@ -28,11 +28,16 @@ type BookingItemCreate struct {
 
 // Response for booking creation
 type CreateBookingResponse struct {
-	BookingID   string        `json:"booking_id"`
-	Status      string        `json:"status"`
-	Items       []BookingItem `json:"items"`
-	TotalAmount int           `json:"total_amount"`
-	ExpiresAt   string        `json:"expires_at"`
+	BookingID    string        `json:"booking_id"`
+	Status       string        `json:"status"`
+	Items        []BookingItem `json:"items"`
+	TotalAmount  int           `json:"total_amount"`
+	PaymentFee   int           `json:"payment_fee"`
+	FinalAmount  int           `json:"final_amount"`
+	ExpiresAt    string        `json:"expires_at"`
+	PaymentID    string        `json:"payment_id"`
+	ClientSecret string        `json:"client_secret"`
+	Currency     string        `json:"currency"`
 }
 
 type BookingItem struct {
@@ -43,24 +48,11 @@ type BookingItem struct {
 	Rank     string `json:"rank"`
 }
 
-// Request to checkout (create payment intent)
-type CheckoutRequest struct {
-	BookingID string `json:"booking_id" binding:"required"`
-}
-
-// Response for checkout
-type CheckoutResponse struct {
-	PaymentID    string `json:"payment_id"`
-	ClientSecret string `json:"client_secret"`
-	Amount       int    `json:"amount"`
-	Currency     string `json:"currency"`
-	BookingID    string `json:"booking_id"`
-}
-
 // Request to confirm payment
 type ConfirmPaymentRequest struct {
 	PaymentID     string `json:"payment_id" binding:"required"`
 	PaymentMethod string `json:"payment_method" binding:"required"`
+	Status        string `json:"status" binding:"required"` // Status from Stripe (succeeded, failed, etc.)
 }
 
 // Response for payment confirmation
@@ -312,44 +304,101 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 		})
 	}
 
-	// Calculate expiration time (from system settings)
-	maxHoldMinutes := 5 // Default, should be fetched from settings
+	// Get payment fee percent from settings
 	settings, err := server.getSystemSettings(token)
-	if err == nil && settings != nil {
-		maxHoldMinutes = settings.MaxReservationHoldMinutes
+	if err != nil {
+		util.LOGGER.Error("POST /api/bookings: failed to get system settings", "error", err)
+		// Rollback
+		server.deleteBooking(token, bookingID)
+		server.releaseSeats(token, req.Items)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to get system settings"})
+		return
 	}
+
+	// Calculate final amount with payment fee
+	paymentFee := float64(totalAmount) * settings.PaymentFeePercent / 100
+	finalAmount := totalAmount + int(paymentFee)
+
+	// Initialize Stripe with secret key
+	payment.InitStripe(server.config.StripeSecretKey)
+
+	// Create payment intent with Stripe
+	paymentIntent, err := payment.CreatePaymentIntent(int64(finalAmount), stripe.CurrencyVND)
+	if err != nil {
+		util.LOGGER.Error("POST /api/bookings: failed to create payment intent", "error", err)
+		// Rollback
+		server.deleteBooking(token, bookingID)
+		server.releaseSeats(token, req.Items)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to create payment intent"})
+		return
+	}
+
+	// Save payment record
+	paymentID := uuid.New().String()
+	paymentData := map[string]any{
+		"id":              paymentID,
+		"booking_id":      bookingID,
+		"transaction_id":  paymentIntent.ID,
+		"amount":          finalAmount,
+		"payment_gateway": "Stripe",
+		"payment_method":  "pending",
+		"status":          "pending",
+	}
+
+	directusURL = fmt.Sprintf("%s/items/payments", server.config.DirectusAddr)
+	var paymentResult directusPayment
+	statusCode, err = util.MakeRequest("POST", directusURL, paymentData, token, &paymentResult)
+	if err != nil {
+		util.LOGGER.Error("POST /api/bookings: failed to save payment", "error", err)
+		// Rollback
+		server.deleteBooking(token, bookingID)
+		server.releaseSeats(token, req.Items)
+		ctx.JSON(statusCode, ErrorResponse{err.Error()})
+		return
+	}
+
+	// Calculate expiration time
+	maxHoldMinutes := settings.MaxReservationHoldMinutes
 	expiresAt := time.Now().Add(time.Duration(maxHoldMinutes) * time.Minute)
 
-	// Schedule background job to release seats if payment not made
-	// TODO: Implement background worker to check expired bookings
+	util.LOGGER.Info("POST /api/bookings: booking created successfully",
+		"booking_id", bookingID,
+		"payment_id", paymentID,
+		"total_amount", totalAmount,
+		"payment_fee", int(paymentFee),
+		"final_amount", finalAmount)
 
 	response := CreateBookingResponse{
-		BookingID:   bookingID,
-		Status:      "pending",
-		Items:       bookingItems,
-		TotalAmount: totalAmount,
-		ExpiresAt:   expiresAt.Format(time.RFC3339),
+		BookingID:    bookingID,
+		Status:       "pending",
+		Items:        bookingItems,
+		TotalAmount:  totalAmount,
+		PaymentFee:   int(paymentFee),
+		FinalAmount:  finalAmount,
+		ExpiresAt:    expiresAt.Format(time.RFC3339),
+		PaymentID:    paymentID,
+		ClientSecret: paymentIntent.ClientSecret,
+		Currency:     string(stripe.CurrencyVND),
 	}
 
 	ctx.JSON(http.StatusCreated, response)
 }
 
-// Checkout godoc
-// @Summary      Create payment intent for booking
-// @Description  Creates a Stripe payment intent for a pending booking
+// ConfirmPayment godoc
+// @Summary      Confirm payment status
+// @Description  Updates payment and booking status based on Stripe payment result
 // @Tags         Bookings
 // @Accept       json
 // @Produce      json
-// @Param        request  body      CheckoutRequest  true  "Checkout request"
-// @Success      200  {object}  CheckoutResponse  "Payment intent created"
-// @Failure      400  {object}  ErrorResponse     "Invalid request"
-// @Failure      401  {object}  ErrorResponse     "Unauthorized"
-// @Failure      404  {object}  ErrorResponse     "Booking not found"
-// @Failure      409  {object}  ErrorResponse     "Booking already paid or expired"
-// @Failure      500  {object}  ErrorResponse     "Internal server error"
+// @Param        request  body      ConfirmPaymentRequest  true  "Payment confirmation"
+// @Success      200  {object}  ConfirmPaymentResponse  "Payment confirmed"
+// @Failure      400  {object}  ErrorResponse           "Invalid request"
+// @Failure      401  {object}  ErrorResponse           "Unauthorized"
+// @Failure      404  {object}  ErrorResponse           "Payment not found"
+// @Failure      500  {object}  ErrorResponse           "Internal server error"
 // @Security BearerAuth
-// @Router       /api/bookings/checkout [post]
-func (server *Server) Checkout(ctx *gin.Context) {
+// @Router       /api/bookings/confirm-payment [post]
+func (server *Server) ConfirmPayment(ctx *gin.Context) {
 	// Get access token
 	token := server.GetToken(ctx)
 	if token == "" {
@@ -365,14 +414,21 @@ func (server *Server) Checkout(ctx *gin.Context) {
 	}
 
 	// Parse request
-	var req CheckoutRequest
+	var req ConfirmPaymentRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, ErrorResponse{err.Error()})
 		return
 	}
 
-	// Get booking details
-	booking, err := server.getBookingByID(token, req.BookingID)
+	// Get payment details
+	paymentRecord, err := server.getPaymentByID(token, req.PaymentID)
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, ErrorResponse{"Payment not found"})
+		return
+	}
+
+	// Get booking to verify ownership
+	booking, err := server.getBookingByID(token, paymentRecord.BookingID)
 	if err != nil {
 		ctx.JSON(http.StatusNotFound, ErrorResponse{"Booking not found"})
 		return
@@ -380,111 +436,133 @@ func (server *Server) Checkout(ctx *gin.Context) {
 
 	// Verify booking belongs to user
 	if booking.CustomerID != userID {
-		ctx.JSON(http.StatusForbidden, ErrorResponse{"You don't have permission to checkout this booking"})
+		ctx.JSON(http.StatusForbidden, ErrorResponse{"You don't have permission to confirm this payment"})
 		return
 	}
 
-	// Check booking status
-	if booking.Status != "pending" {
-		ctx.JSON(http.StatusConflict, ErrorResponse{fmt.Sprintf("Booking is %s, cannot checkout", booking.Status)})
-		return
-	}
+	// Initialize Stripe
+	payment.InitStripe(server.config.StripeSecretKey)
 
-	// Get booking items to calculate total amount
-	bookingItems, err := server.getBookingItems(token, req.BookingID)
+	// Confirm payment intent with Stripe
+	returnURL := fmt.Sprintf("%s/payment/confirm", server.config.FrontendURL)
+	paymentIntent, err := payment.ConfirmPaymentIntent(
+		paymentRecord.TransactionID,
+		req.PaymentMethod,
+		returnURL,
+	)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to get booking items"})
-		return
-	}
-
-	// Check if booking has items
-	if len(bookingItems) == 0 {
-		util.LOGGER.Error("POST /api/bookings/checkout: no booking items found", "booking_id", req.BookingID)
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"No items found in booking"})
-		return
-	}
-
-	// Calculate total amount with payment fee
-	subtotal := 0
-	for _, item := range bookingItems {
-		subtotal += item.Price
-	}
-
-	util.LOGGER.Info("POST /api/bookings/checkout: calculated amounts",
-		"booking_id", req.BookingID,
-		"items_count", len(bookingItems),
-		"subtotal", subtotal)
-
-	// Validate subtotal
-	if subtotal <= 0 {
-		util.LOGGER.Error("POST /api/bookings/checkout: invalid subtotal",
-			"booking_id", req.BookingID,
-			"subtotal", subtotal)
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Booking items have invalid prices"})
-		return
-	}
-
-	// Apply payment fee (from system settings)
-	paymentFeePercent := 5.0 // Default
-	settings, err := server.getSystemSettings(token)
-	if err == nil && settings != nil {
-		paymentFeePercent = settings.PaymentFeePercent
-	}
-	totalAmount := int(float64(subtotal) * (1 + paymentFeePercent/100))
-
-	// Stripe minimum charge amount: must convert to at least $0.50 USD
-	// At ~25,000 VND = $1 USD, minimum is approximately 12,500 VND
-	// We'll use 13,000 VND to have a safe buffer
-	const minStripeAmountVND = 13000
-	if totalAmount < minStripeAmountVND {
-		util.LOGGER.Error("POST /api/bookings/checkout: amount below Stripe minimum",
-			"amount", totalAmount,
-			"minimum", minStripeAmountVND)
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{
-			fmt.Sprintf("Payment amount (%d VND) is below the minimum allowed (%d VND). Stripe requires amounts to convert to at least $0.50 USD.",
-				totalAmount, minStripeAmountVND)})
-		return
-	}
-
-	// Create Stripe payment intent
-	intent, err := payment.CreatePaymentIntent(int64(totalAmount), stripe.CurrencyVND)
-	if err != nil {
-		util.LOGGER.Error("POST /api/bookings/checkout: failed to create payment intent",
+		util.LOGGER.Error("POST /api/bookings/confirm-payment: failed to confirm payment intent",
 			"error", err,
-			"amount", totalAmount)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to create payment intent"})
+			"payment_id", req.PaymentID,
+			"transaction_id", paymentRecord.TransactionID)
+
+		// Update payment status to failed
+		updateData := map[string]any{
+			"status":         "failed",
+			"payment_method": req.PaymentMethod,
+		}
+		directusURL := fmt.Sprintf("%s/items/payments/%s", server.config.DirectusAddr, req.PaymentID)
+		util.MakeRequest("PATCH", directusURL, updateData, token, &map[string]any{})
+
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to confirm payment with Stripe"})
 		return
 	}
 
-	// Save payment record
-	paymentID := uuid.New().String()
-	paymentData := map[string]any{
-		"id":              paymentID,
-		"booking_id":      req.BookingID,
-		"transaction_id":  intent.ID,
-		"amount":          totalAmount,
-		"payment_gateway": "Stripe",
-		"payment_method":  "pending",
-		"status":          "pending",
-	}
+	// Check payment status from Stripe response
+	stripeStatus := string(paymentIntent.Status)
 
-	directusURL := fmt.Sprintf("%s/items/payments", server.config.DirectusAddr)
-	var paymentResult directusPayment
-	statusCode, err := util.MakeRequest("POST", directusURL, paymentData, token, &paymentResult)
-	if err != nil {
-		util.LOGGER.Error("POST /api/bookings/checkout: failed to save payment", "error", err)
-		ctx.JSON(statusCode, ErrorResponse{err.Error()})
+	if stripeStatus == "succeeded" && req.Status == "succeeded" {
+		// Payment success - update payment status to success
+		updatePaymentData := map[string]any{
+			"status":         "success",
+			"payment_method": req.PaymentMethod,
+		}
+		directusURL := fmt.Sprintf("%s/items/payments/%s", server.config.DirectusAddr, req.PaymentID)
+		_, err = util.MakeRequest("PATCH", directusURL, updatePaymentData, token, &map[string]any{})
+		if err != nil {
+			util.LOGGER.Error("POST /api/bookings/confirm-payment: failed to update payment status", "error", err)
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to update payment status"})
+			return
+		}
+
+		// Update booking status to complete
+		updateBookingData := map[string]any{
+			"status": "complete",
+		}
+		bookingURL := fmt.Sprintf("%s/items/bookings/%s", server.config.DirectusAddr, paymentRecord.BookingID)
+		_, err = util.MakeRequest("PATCH", bookingURL, updateBookingData, token, &map[string]any{})
+		if err != nil {
+			util.LOGGER.Error("POST /api/bookings/confirm-payment: failed to update booking status", "error", err)
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to update booking status"})
+			return
+		}
+
+		// Update seat status from reserved to booked
+		bookingItems, err := server.getBookingItems(token, paymentRecord.BookingID)
+		if err == nil {
+			for _, item := range bookingItems {
+				server.updateSeatStatus(token, item.SeatID, "booked", "")
+			}
+		}
+
+		util.LOGGER.Info("POST /api/bookings/confirm-payment: payment successful",
+			"payment_id", req.PaymentID,
+			"booking_id", paymentRecord.BookingID,
+			"transaction_id", paymentRecord.TransactionID,
+			"stripe_status", stripeStatus)
+
+		response := ConfirmPaymentResponse{
+			PaymentID: req.PaymentID,
+			BookingID: paymentRecord.BookingID,
+			Status:    "success",
+			Amount:    paymentRecord.Amount,
+		}
+		ctx.JSON(http.StatusOK, response)
 		return
 	}
 
-	response := CheckoutResponse{
-		PaymentID:    paymentID,
-		ClientSecret: intent.ClientSecret,
-		Amount:       totalAmount,
-		Currency:     string(stripe.CurrencyVND),
-		BookingID:    req.BookingID,
+	// Payment failed
+	if req.Status == "failed" || stripeStatus == "canceled" || stripeStatus == "failed" {
+		// Update payment status to failed
+		updateData := map[string]any{
+			"status":         "failed",
+			"payment_method": req.PaymentMethod,
+		}
+		directusURL := fmt.Sprintf("%s/items/payments/%s", server.config.DirectusAddr, req.PaymentID)
+		_, err = util.MakeRequest("PATCH", directusURL, updateData, token, &map[string]any{})
+		if err != nil {
+			util.LOGGER.Error("POST /api/bookings/confirm-payment: failed to update payment status", "error", err)
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to update payment status"})
+			return
+		}
+
+		util.LOGGER.Info("POST /api/bookings/confirm-payment: payment failed",
+			"payment_id", req.PaymentID,
+			"status", req.Status,
+			"stripe_status", stripeStatus)
+
+		response := ConfirmPaymentResponse{
+			PaymentID: req.PaymentID,
+			BookingID: paymentRecord.BookingID,
+			Status:    "failed",
+			Amount:    paymentRecord.Amount,
+		}
+		ctx.JSON(http.StatusOK, response)
+		return
 	}
 
+	// Payment is in other status (processing, requires_action, requires_payment_method, etc.)
+	util.LOGGER.Info("POST /api/bookings/confirm-payment: payment in progress",
+		"payment_id", req.PaymentID,
+		"status", req.Status,
+		"stripe_status", stripeStatus)
+
+	response := ConfirmPaymentResponse{
+		PaymentID: req.PaymentID,
+		BookingID: paymentRecord.BookingID,
+		Status:    stripeStatus,
+		Amount:    paymentRecord.Amount,
+	}
 	ctx.JSON(http.StatusOK, response)
 }
 
@@ -560,7 +638,7 @@ func (server *Server) getBookingByID(token, bookingID string) (*directusBooking,
 	return &booking, nil
 }
 
-// Get booking items
+// Get booking items by booking ID
 func (server *Server) getBookingItems(token, bookingID string) ([]directusBookingItem, error) {
 	queryParams := url.Values{}
 	queryParams.Add("filter[booking_id][_eq]", bookingID)
@@ -572,6 +650,17 @@ func (server *Server) getBookingItems(token, bookingID string) ([]directusBookin
 		return nil, err
 	}
 	return items, nil
+}
+
+// Get payment by ID
+func (server *Server) getPaymentByID(token, paymentID string) (*directusPayment, error) {
+	directusURL := fmt.Sprintf("%s/items/payments/%s", server.config.DirectusAddr, paymentID)
+	var payment directusPayment
+	_, err := util.MakeRequest("GET", directusURL, nil, token, &payment)
+	if err != nil {
+		return nil, err
+	}
+	return &payment, nil
 }
 
 // Delete booking
@@ -675,7 +764,7 @@ type systemSettings struct {
 	MinEventLeadDays          int     `json:"min_event_lead_days"`
 	MaxReservationHoldMinutes int     `json:"max_reservation_hold_minutes"`
 	MinSellingDurationMinutes int     `json:"min_selling_duration_minutes"`
-	PaymentFeePercent         float64 `json:"payment_fee_percent"`
+	PaymentFeePercent         float64 `json:"payment_fee_percent,string"` // Parse string to float64
 	MaxFullRefundHours        int     `json:"max_full_refund_hours"`
 	SystemEmail               string  `json:"system_email"`
 }
