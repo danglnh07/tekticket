@@ -30,8 +30,10 @@ type Config struct {
 	Email                string `json:"email"`                  // Platform email
 	AppPassword          string `json:"app_password"`           // Platform email's app password
 	SecretKey            string `json:"secret_key"`             // Platfrom secret key
+	QRSecretKey          string `json:"qr_secret_key"`          // QR code encryption secret key
 	ResetPasswordURL     string `json:"reset_password_url"`     // The frontend URL of the reset password page
 	CheckinURL           string `json:"checkin_url"`            // The frontend URL of the checkin page
+	FrontendURL          string `json:"frontend_url"`           // The frontend base URL
 	StripePublishableKey string `json:"stripe_publishable_key"` // Stripe publishable key
 	StripeSecretKey      string `json:"stripe_secret_key"`      // Stripe secret key
 	AblyApiKey           string `json:"ably_api_key"`           // Ably API key
@@ -81,8 +83,10 @@ func (config *Config) LoadDynamicConfig() error {
 	config.Email = configs[0].Email
 	config.AppPassword = configs[0].AppPassword
 	config.SecretKey = configs[0].SecretKey
+	config.QRSecretKey = configs[0].QRSecretKey
 	config.ResetPasswordURL = configs[0].ResetPasswordURL
 	config.CheckinURL = configs[0].CheckinURL
+	config.FrontendURL = configs[0].FrontendURL
 	config.CloudStorageName = configs[0].CloudStorageName
 	config.CloudStorageKey = configs[0].CloudStorageKey
 	config.CloudStorageSecret = configs[0].CloudStorageSecret

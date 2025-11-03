@@ -103,6 +103,17 @@ func (server *Server) RegisterHandler() {
 			memberships.GET("/:id", server.GetUserMembership)
 		}
 
+		// Bookings routes
+		bookings := api.Group("/bookings")
+		{
+			bookings.POST("", server.CreateBooking)
+			bookings.GET("", server.ListMyBookings)
+			bookings.GET("/:id", server.GetBooking)
+			bookings.POST("/checkout", server.Checkout)
+			bookings.POST("/confirm-payment", server.ConfirmPayment)
+			bookings.POST("/:id/cancel", server.CancelBooking)
+		}
+
 		// Webhook handler
 		webhook := api.Group("/webhook")
 		{

@@ -11,6 +11,7 @@ import (
 	"tekticket/db"
 	"tekticket/service/bot"
 	"tekticket/service/notify"
+	"tekticket/service/payment"
 	"tekticket/service/uploader"
 	"tekticket/service/worker"
 	"tekticket/util"
@@ -41,6 +42,10 @@ func main() {
 		util.LOGGER.Error("Error connecting to Redis", "error", err)
 		os.Exit(1)
 	}
+
+	// Initialize Stripe payment service
+	payment.InitStripe(config.StripeSecretKey)
+	util.LOGGER.Info("Stripe payment service initialized")
 
 	// Create dependencies for server
 	distributor := worker.NewRedisTaskDistributor(asynq.RedisClientOpt{Addr: config.RedisAddr})
