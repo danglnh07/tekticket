@@ -454,6 +454,7 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 
 	// Confirm payment intent with Stripe
 	// returnURL := fmt.Sprintf("%s/payment/confirm", server.config.FrontendURL)
+	util.LOGGER.Info("Payment intent ID", "id", paymentRecord.TransactionID)
 	paymentIntent, err := payment.ConfirmPaymentIntent(
 		paymentRecord.TransactionID,
 		pm.ID,
@@ -480,7 +481,7 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 	// Check payment status from Stripe response
 	stripeStatus := string(paymentIntent.Status)
 
-	if stripeStatus == "succeeded" && req.Status == "succeeded" {
+	if stripeStatus == "succeeded" && req.Status == "success" {
 		// Payment success - update payment status to success
 		updatePaymentData := map[string]any{
 			"status":         "success",
@@ -492,26 +493,6 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 			util.LOGGER.Error("POST /api/bookings/confirm-payment: failed to update payment status", "error", err)
 			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to update payment status"})
 			return
-		}
-
-		// Update booking status to complete
-		updateBookingData := map[string]any{
-			"status": "complete",
-		}
-		bookingURL := fmt.Sprintf("%s/items/bookings/%s", server.config.DirectusAddr, paymentRecord.BookingID)
-		_, err = util.MakeRequest("PATCH", bookingURL, updateBookingData, token, &map[string]any{})
-		if err != nil {
-			util.LOGGER.Error("POST /api/bookings/confirm-payment: failed to update booking status", "error", err)
-			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to update booking status"})
-			return
-		}
-
-		// Update seat status from reserved to booked
-		bookingItems, err := server.getBookingItems(token, paymentRecord.BookingID)
-		if err == nil {
-			for _, item := range bookingItems {
-				server.updateSeatStatus(token, item.SeatID, "booked", "")
-			}
 		}
 
 		util.LOGGER.Info("POST /api/bookings/confirm-payment: payment successful",
@@ -645,20 +626,6 @@ func (server *Server) getBookingByID(token, bookingID string) (*directusBooking,
 		return nil, err
 	}
 	return &booking, nil
-}
-
-// Get booking items by booking ID
-func (server *Server) getBookingItems(token, bookingID string) ([]directusBookingItem, error) {
-	queryParams := url.Values{}
-	queryParams.Add("filter[booking_id][_eq]", bookingID)
-
-	directusURL := fmt.Sprintf("%s/items/booking_items?%s", server.config.DirectusAddr, queryParams.Encode())
-	var items []directusBookingItem
-	_, err := util.MakeRequest("GET", directusURL, nil, token, &items)
-	if err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 // Get payment by ID
