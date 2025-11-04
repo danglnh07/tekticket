@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -33,32 +32,18 @@ type ProfileResponse struct {
 // @Router       /api/profile [get]
 func (server *Server) GetProfile(ctx *gin.Context) {
 	// Get user
-	url := fmt.Sprintf("%s/%s/%s", server.config.DirectusAddr, "users", "me")
-	resp, status, err := util.MakeRequest("GET", url, nil, server.GetToken(ctx))
+	url := fmt.Sprintf("%s/%s/%s?fields=id,first_name,last_name,email,location,avatar", server.config.DirectusAddr, "users", "me")
+	var profile ProfileResponse
+	status, err := util.MakeRequest("GET", url, nil, server.GetToken(ctx), &profile)
 	if err != nil {
 		util.LOGGER.Error("GET /api/profile: failed to make request to Directus", "error", err)
 		ctx.JSON(status, ErrorResponse{err.Error()})
 		return
 	}
 
-	// Parse request
-	var directusResp struct {
-		Data ProfileResponse `json:"data"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
-		util.LOGGER.Error("GET /api/profile: failed to parse response", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
-		return
-	}
-
-	var profile = ProfileResponse{
-		ID:        directusResp.Data.ID,
-		Firstname: directusResp.Data.Firstname,
-		Lastname:  directusResp.Data.Lastname,
-		Email:     directusResp.Data.Email,
-		Location:  directusResp.Data.Location,
-		Avatar:    util.CreateImageLink(directusResp.Data.Avatar),
+	// Remap avatar into an usable link
+	if profile.Avatar != "" {
+		profile.Avatar = util.CreateImageLink(profile.Avatar)
 	}
 
 	ctx.JSON(http.StatusOK, profile)
@@ -123,24 +108,14 @@ func (server *Server) UpdateProfile(ctx *gin.Context) {
 
 	// Make request to Directus API
 	url := fmt.Sprintf("%s/%s/%s", server.config.DirectusAddr, "users", "me")
-	resp, status, err := util.MakeRequest("PATCH", url, data, server.GetToken(ctx))
+	var profile ProfileResponse
+	status, err := util.MakeRequest("PATCH", url, data, server.GetToken(ctx), &profile)
 	if err != nil {
 		util.LOGGER.Error("PUT /api/profile: failed to make request into Directus", "error", err)
 		ctx.JSON(status, ErrorResponse{err.Error()})
 		return
 	}
 
-	// Parse response return
-	var directusResp struct {
-		Data ProfileResponse `json:"data"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
-		util.LOGGER.Error("PUT /api/profile: failed to parse response body", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal servere error"})
-		return
-	}
-
-	directusResp.Data.Avatar = util.CreateImageLink(directusResp.Data.Avatar)
-	ctx.JSON(http.StatusOK, directusResp.Data)
+	profile.Avatar = util.CreateImageLink(profile.Avatar)
+	ctx.JSON(http.StatusOK, profile)
 }

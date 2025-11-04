@@ -1,7 +1,96 @@
 definitions:
+  api.Category:
+    properties:
+      description:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  api.Creator:
+    properties:
+      email:
+        type: string
+      first_name:
+        type: string
+      last_name:
+        type: string
+    type: object
   api.ErrorResponse:
     properties:
       error:
+        type: string
+    type: object
+  api.EventDetail:
+    properties:
+      address:
+        type: string
+      categories:
+        $ref: '#/definitions/api.Category'
+      city:
+        type: string
+      country:
+        type: string
+      creator:
+        $ref: '#/definitions/api.Creator'
+      description:
+        type: string
+      event_schedules:
+        items:
+          $ref: '#/definitions/api.EventSchedule'
+        type: array
+      id:
+        type: string
+      name:
+        type: string
+      preview_image:
+        type: string
+      seat_zones:
+        items:
+          $ref: '#/definitions/api.SeatZone'
+        type: array
+      slug:
+        type: string
+      tickets:
+        items:
+          $ref: '#/definitions/api.Ticket'
+        type: array
+    type: object
+  api.EventInfo:
+    properties:
+      address:
+        type: string
+      base_price:
+        description: Minimum ticket price
+        type: integer
+      category:
+        $ref: '#/definitions/api.Category'
+      city:
+        type: string
+      country:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      preview_image:
+        type: string
+      start_time:
+        description: Closest upcoming schedule time
+        type: string
+    type: object
+  api.EventSchedule:
+    properties:
+      end_checkin_time:
+        type: string
+      end_time:
+        type: string
+      id:
+        type: string
+      start_checkin_time:
+        type: string
+      start_time:
         type: string
     type: object
   api.LoginRequest:
@@ -20,6 +109,8 @@ definitions:
         type: string
       expires:
         type: integer
+      id:
+        type: string
       refresh_token:
         type: string
     type: object
@@ -29,6 +120,33 @@ definitions:
         type: string
     required:
     - refresh_token
+    type: object
+  api.MembershipResponse:
+    properties:
+      discount:
+        type: number
+      early_buy_time:
+        type: integer
+      points:
+        type: integer
+      tier:
+        type: string
+    type: object
+  api.MembershipTier:
+    properties:
+      base_point:
+        type: integer
+      discount:
+        description: Can be string or number from Directus
+        type: number
+      early_buy_time:
+        type: integer
+      id:
+        type: string
+      status:
+        type: string
+      tier:
+        type: string
     type: object
   api.ProfileResponse:
     properties:
@@ -79,10 +197,67 @@ definitions:
       status:
         type: string
     type: object
+  api.ResetPasswordRequest:
+    properties:
+      new_password:
+        type: string
+      token:
+        type: string
+    type: object
+  api.Seat:
+    properties:
+      id:
+        type: string
+      seat_number:
+        type: string
+      status:
+        type: string
+    type: object
+  api.SeatZone:
+    properties:
+      description:
+        type: string
+      id:
+        type: string
+      seats:
+        items:
+          $ref: '#/definitions/api.Seat'
+        type: array
+      total_seats:
+        type: integer
+    type: object
   api.SuccessMessage:
     properties:
       message:
         type: string
+    type: object
+  api.Ticket:
+    properties:
+      base_price:
+        type: integer
+      description:
+        type: string
+      id:
+        type: string
+      rank:
+        type: string
+      ticket_selling_schedules:
+        items:
+          $ref: '#/definitions/api.TicketSellingSchedule'
+        type: array
+    type: object
+  api.TicketSellingSchedule:
+    properties:
+      available:
+        type: integer
+      end_selling_time:
+        type: string
+      id:
+        type: string
+      start_selling_time:
+        type: string
+      total:
+        type: integer
     type: object
   api.UpdateProfileRequest:
     properties:
@@ -167,6 +342,69 @@ paths:
           schema:
             $ref: '#/definitions/api.ErrorResponse'
       summary: User logout
+      tags:
+      - Auth
+  /api/auth/password/request:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Sends a password reset email to the specified email address if the account exists.
+        The email will contain a link or OTP to reset the user's password.
+      parameters:
+      - description: User email address
+        in: query
+        name: email
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email sent successfully
+          schema:
+            $ref: '#/definitions/api.SuccessMessage'
+        "400":
+          description: No account with this email or invalid input
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to communicate with Directus
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Send password reset request
+      tags:
+      - Auth
+  /api/auth/password/reset:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Resets the user's password using a valid password reset token.
+        The token must be provided in the request body and is validated for authenticity and expiration.
+      parameters:
+      - description: Password reset request body containing token and new password
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.ResetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password changed successfully
+          schema:
+            $ref: '#/definitions/api.SuccessMessage'
+        "400":
+          description: Invalid or expired token
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to communicate with Directus
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Reset user password
       tags:
       - Auth
   /api/auth/refresh:
@@ -298,6 +536,193 @@ paths:
       summary: Verify user account
       tags:
       - Auth
+  /api/categories:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of all available event categories from the database.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of categories retrieved successfully
+          schema:
+            items:
+              $ref: '#/definitions/api.Category'
+            type: array
+        "401":
+          description: Unauthorized access
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Retrieve all categories
+      tags:
+      - Events
+  /api/events:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of published events with minimal information
+      parameters:
+      - description: Filter by event name (case-insensitive contains)
+        in: query
+        name: name
+        type: string
+      - description: Filter by city or country (case-insensitive contains)
+        in: query
+        name: location
+        type: string
+      - description: Filter by category name (case-insensitive contains)
+        in: query
+        name: category
+        type: string
+      - description: Filter by minimum base price
+        in: query
+        name: min_price
+        type: integer
+      - description: Filter by maximum base price
+        in: query
+        name: max_price
+        type: integer
+      - description: 'Limit number of results (default: 50)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Offset for pagination (default: 0)'
+        in: query
+        name: offset
+        type: integer
+      - description: 'Sort field (default: -date_created). Use - prefix for descending'
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of events retrieved successfully
+          schema:
+            items:
+              $ref: '#/definitions/api.EventInfo'
+            type: array
+        "401":
+          description: Unauthorized access
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List all events
+      tags:
+      - Events
+  /api/events/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Returns detailed information about a specific event, including
+        category, images, and schedule data.
+      parameters:
+      - description: Event ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Event details retrieved successfully
+          schema:
+            $ref: '#/definitions/api.EventDetail'
+        "400":
+          description: Invalid or missing event ID
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized access
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Event not found or not published
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to communicate with Directus
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Retrieve a single event by ID
+      tags:
+      - Events
+  /api/memberships:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves all published membership tiers sorted by resulting points
+        in ascending order.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of memberships retrieved successfully
+          schema:
+            items:
+              $ref: '#/definitions/api.MembershipTier'
+            type: array
+        "401":
+          description: Unauthorized access
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to communicate with Directus
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List all published membership tiers
+      tags:
+      - Memberships
+  /api/memberships/{user_id}:
+    get:
+      consumes:
+      - application/json
+      description: Calculate points from total payments (100,000 VND = 10 points)
+        and determine tier
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Customer membership info
+          schema:
+            $ref: '#/definitions/api.MembershipResponse'
+        "400":
+          description: Invalid user ID
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get customer membership info
+      tags:
+      - Memberships
   /api/profile:
     get:
       consumes:
