@@ -36,9 +36,11 @@ type Config struct {
 	FrontendURL          string `json:"frontend_url"`           // The frontend base URL
 	StripePublishableKey string `json:"stripe_publishable_key"` // Stripe publishable key
 	StripeSecretKey      string `json:"stripe_secret_key"`      // Stripe secret key
-	AblyApiKey           string `json:"ably_api_key"`           // Ably API key
-	TelegramBotToken     string `json:"telegram_bot_token"`     // Telegram bot token
-	ServerDomain         string `json:"server_domain"`          // Server domain, it can be Ngrok generated, or a custom domain
+	AblyApiKey               string  `json:"ably_api_key"`               // Ably API key
+	TelegramBotToken         string  `json:"telegram_bot_token"`         // Telegram bot token
+	ServerDomain             string  `json:"server_domain"`             // Server domain, it can be Ngrok generated, or a custom domain
+	PaymentFeePercent        float64 `json:"payment_fee_percent,string"` // Payment fee percentage
+	MaxReservationHoldMinutes int    `json:"max_reservation_hold_minutes"` // Maximum minutes to hold reservation
 }
 
 // Constructor method for Config struct
@@ -96,6 +98,8 @@ func (config *Config) LoadDynamicConfig() error {
 	config.TelegramBotToken = configs[0].TelegramBotToken
 	config.NgrokAuthToken = configs[0].NgrokAuthToken
 	config.ServerDomain = configs[0].ServerDomain
+	config.PaymentFeePercent = configs[0].PaymentFeePercent
+	config.MaxReservationHoldMinutes = configs[0].MaxReservationHoldMinutes
 
 	return nil
 }

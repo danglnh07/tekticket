@@ -28,17 +28,17 @@ type BookingItemCreate struct {
 
 // Response for booking creation
 type CreateBookingResponse struct {
-	BookingID           string        `json:"booking_id"`
-	Status              string        `json:"status"`
-	Items               []BookingItem `json:"items"`
-	TotalAmount         int           `json:"total_amount"`
-	PaymentFee          int           `json:"payment_fee"`
-	FinalAmount         int           `json:"final_amount"`
-	ExpiresAt           string        `json:"expires_at"`
-	PaymentID           string        `json:"payment_id"`
-	ClientSecret        string        `json:"client_secret"`
-	Currency            string        `json:"currency"`
-	StripePublishableKey string       `json:"stripe_publishable_key"`
+	BookingID            string        `json:"booking_id"`
+	Status               string        `json:"status"`
+	Items                []BookingItem `json:"items"`
+	TotalAmount          int           `json:"total_amount"`
+	PaymentFee           int           `json:"payment_fee"`
+	FinalAmount          int           `json:"final_amount"`
+	ExpiresAt            string        `json:"expires_at"`
+	PaymentID            string        `json:"payment_id"`
+	ClientSecret         string        `json:"client_secret"`
+	Currency             string        `json:"currency"`
+	StripePublishableKey string        `json:"stripe_publishable_key"`
 }
 
 type BookingItem struct {
@@ -305,19 +305,8 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 		})
 	}
 
-	// Get payment fee percent from settings
-	settings, err := server.getSystemSettings(token)
-	if err != nil {
-		util.LOGGER.Error("POST /api/bookings: failed to get system settings", "error", err)
-		// Rollback
-		server.deleteBooking(token, bookingID)
-		server.releaseSeats(token, req.Items)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to get system settings"})
-		return
-	}
-
 	// Calculate final amount with payment fee
-	paymentFee := float64(totalAmount) * settings.PaymentFeePercent / 100
+	paymentFee := float64(totalAmount) * server.config.PaymentFeePercent / 100
 	finalAmount := totalAmount + int(paymentFee)
 
 	// Initialize Stripe with secret key
@@ -359,7 +348,7 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 	}
 
 	// Calculate expiration time
-	maxHoldMinutes := settings.MaxReservationHoldMinutes
+	maxHoldMinutes := server.config.MaxReservationHoldMinutes
 	expiresAt := time.Now().Add(time.Duration(maxHoldMinutes) * time.Minute)
 
 	util.LOGGER.Info("POST /api/bookings: booking created successfully",
@@ -368,7 +357,7 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 		"total_amount", totalAmount,
 		"payment_fee", int(paymentFee),
 		"final_amount", finalAmount,
-		"stripe_publishable_key", settings.StripePublishableKey)
+		"stripe_publishable_key", server.config.StripePublishableKey)
 
 	response := CreateBookingResponse{
 		BookingID:            bookingID,
@@ -381,7 +370,7 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 		PaymentID:            paymentID,
 		ClientSecret:         paymentIntent.ClientSecret,
 		Currency:             string(stripe.CurrencyVND),
-		StripePublishableKey: settings.StripePublishableKey,
+		StripePublishableKey: server.config.StripePublishableKey,
 	}
 
 	ctx.JSON(http.StatusCreated, response)
@@ -734,32 +723,4 @@ func (server *Server) getUserMembership(token, userID string) (*userMembershipIn
 	}
 
 	return nil, fmt.Errorf("no matching tier")
-}
-
-// System settings
-type systemSettings struct {
-	MoneyToPointRate          int     `json:"money_to_point_rate"`
-	MinEventDurationMinutes   int     `json:"min_event_duration_minutes"`
-	MinEventLeadDays          int     `json:"min_event_lead_days"`
-	MaxReservationHoldMinutes int     `json:"max_reservation_hold_minutes"`
-	MinSellingDurationMinutes int     `json:"min_selling_duration_minutes"`
-	PaymentFeePercent         float64 `json:"payment_fee_percent,string"` // Parse string to float64
-	MaxFullRefundHours        int     `json:"max_full_refund_hours"`
-	SystemEmail               string  `json:"system_email"`
-	StripePublishableKey      string  `json:"stripe_publishable_key"`
-}
-
-func (server *Server) getSystemSettings(token string) (*systemSettings, error) {
-	queryParams := url.Values{}
-	queryParams.Add("filter[in_used][_eq]", "true")
-	queryParams.Add("filter[status][_eq]", "published")
-	queryParams.Add("limit", "1")
-
-	directusURL := fmt.Sprintf("%s/items/settings?%s", server.config.DirectusAddr, queryParams.Encode())
-	var settings []systemSettings
-	_, err := util.MakeRequest("GET", directusURL, nil, token, &settings)
-	if err != nil || len(settings) == 0 {
-		return nil, err
-	}
-	return &settings[0], nil
 }
