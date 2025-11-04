@@ -28,16 +28,17 @@ type BookingItemCreate struct {
 
 // Response for booking creation
 type CreateBookingResponse struct {
-	BookingID    string        `json:"booking_id"`
-	Status       string        `json:"status"`
-	Items        []BookingItem `json:"items"`
-	TotalAmount  int           `json:"total_amount"`
-	PaymentFee   int           `json:"payment_fee"`
-	FinalAmount  int           `json:"final_amount"`
-	ExpiresAt    string        `json:"expires_at"`
-	PaymentID    string        `json:"payment_id"`
-	ClientSecret string        `json:"client_secret"`
-	Currency     string        `json:"currency"`
+	BookingID           string        `json:"booking_id"`
+	Status              string        `json:"status"`
+	Items               []BookingItem `json:"items"`
+	TotalAmount         int           `json:"total_amount"`
+	PaymentFee          int           `json:"payment_fee"`
+	FinalAmount         int           `json:"final_amount"`
+	ExpiresAt           string        `json:"expires_at"`
+	PaymentID           string        `json:"payment_id"`
+	ClientSecret        string        `json:"client_secret"`
+	Currency            string        `json:"currency"`
+	StripePublishableKey string       `json:"stripe_publishable_key"`
 }
 
 type BookingItem struct {
@@ -366,19 +367,21 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 		"payment_id", paymentID,
 		"total_amount", totalAmount,
 		"payment_fee", int(paymentFee),
-		"final_amount", finalAmount)
+		"final_amount", finalAmount,
+		"stripe_publishable_key", settings.StripePublishableKey)
 
 	response := CreateBookingResponse{
-		BookingID:    bookingID,
-		Status:       "pending",
-		Items:        bookingItems,
-		TotalAmount:  totalAmount,
-		PaymentFee:   int(paymentFee),
-		FinalAmount:  finalAmount,
-		ExpiresAt:    expiresAt.Format(time.RFC3339),
-		PaymentID:    paymentID,
-		ClientSecret: paymentIntent.ClientSecret,
-		Currency:     string(stripe.CurrencyVND),
+		BookingID:            bookingID,
+		Status:               "pending",
+		Items:                bookingItems,
+		TotalAmount:          totalAmount,
+		PaymentFee:           int(paymentFee),
+		FinalAmount:          finalAmount,
+		ExpiresAt:            expiresAt.Format(time.RFC3339),
+		PaymentID:            paymentID,
+		ClientSecret:         paymentIntent.ClientSecret,
+		Currency:             string(stripe.CurrencyVND),
+		StripePublishableKey: settings.StripePublishableKey,
 	}
 
 	ctx.JSON(http.StatusCreated, response)
@@ -743,6 +746,7 @@ type systemSettings struct {
 	PaymentFeePercent         float64 `json:"payment_fee_percent,string"` // Parse string to float64
 	MaxFullRefundHours        int     `json:"max_full_refund_hours"`
 	SystemEmail               string  `json:"system_email"`
+	StripePublishableKey      string  `json:"stripe_publishable_key"`
 }
 
 func (server *Server) getSystemSettings(token string) (*systemSettings, error) {
