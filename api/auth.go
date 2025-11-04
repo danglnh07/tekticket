@@ -1,8 +1,6 @@
 package api
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -270,17 +268,10 @@ func (server *Server) Login(ctx *gin.Context) {
 	// Get user ID from access token. Note that JWT payload should use base64.RawURLEncoding instead of base64.URLEncoding
 	// Even if this failed for some reasons, the consumer (client) can still get the user ID from the JWT access token, so we won't
 	// return error here.
-	jwtPayload, err := base64.RawURLEncoding.DecodeString(strings.Split(result.AccessToken, ".")[1])
-	if err != nil {
-		util.LOGGER.Error("POST /api/auth/login: failed to decode JWT payload", "error", err)
+	if id, err := util.ExtractIDFromToken(result.AccessToken); err == nil {
+		result.ID = id
 	} else {
-		// If decode success, try unmarshal payload to get user ID
-		var tokenPayload map[string]any
-		if err := json.Unmarshal(jwtPayload, &tokenPayload); err != nil {
-			util.LOGGER.Error("POST /api/auth/login: failed to get user ID from access token", "error", err)
-		} else {
-			result.ID = tokenPayload["id"].(string)
-		}
+		util.LOGGER.Error("POST /api/auth/login: failed to decode JWT payload", "error", err)
 	}
 
 	ctx.JSON(http.StatusOK, result)

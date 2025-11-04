@@ -181,3 +181,25 @@ func Decode(str string) string {
 	}
 	return string(data)
 }
+
+// Helper method: get user ID from access token
+func ExtractIDFromToken(token string) (string, error) {
+	// Decode base64 token to get the JWT payload
+	jwtPayload, err := base64.RawURLEncoding.DecodeString(strings.Split(token, ".")[1])
+	if err != nil {
+		return "", err
+	}
+
+	// If decode success, try unmarshal payload to get user ID
+	var tokenPayload map[string]any
+	if err := json.Unmarshal(jwtPayload, &tokenPayload); err != nil {
+		return "", err
+	}
+
+	// Try parsing ID from map (avoid panic error)
+	if id, ok := tokenPayload["id"].(string); ok {
+		return id, nil
+	}
+
+	return "", fmt.Errorf("failed to parse ID")
+}
