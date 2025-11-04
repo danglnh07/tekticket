@@ -167,7 +167,7 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 	// Get access token and extract user
 	token := server.GetToken(ctx)
 	if token == "" {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
+		ctx.JSON(http.StatusUnauthorized, ErrorResponse{Message: "Unauthorized access"})
 		return
 	}
 
@@ -175,14 +175,14 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 	userID, err := server.GetUserIDFromToken(token)
 	if err != nil {
 		util.LOGGER.Error("POST /api/bookings: failed to get user from token", "error", err)
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Invalid token"})
+		ctx.JSON(http.StatusUnauthorized, ErrorResponse{Message: "Invalid token"})
 		return
 	}
 
 	// Parse request
 	var req CreateBookingRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{err.Error()})
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{Message: err.Error()})
 		return
 	}
 
@@ -191,11 +191,11 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 		// Get ticket details to verify it belongs to the event
 		ticket, err := server.getTicketByID(token, item.TicketID)
 		if err != nil {
-			ctx.JSON(http.StatusBadRequest, ErrorResponse{fmt.Sprintf("Invalid ticket ID: %s", item.TicketID)})
+			ctx.JSON(http.StatusBadRequest, ErrorResponse{Message: fmt.Sprintf("Invalid ticket ID: %s", item.TicketID)})
 			return
 		}
 		if ticket.EventID != req.EventID {
-			ctx.JSON(http.StatusBadRequest, ErrorResponse{"All tickets must belong to the same event"})
+			ctx.JSON(http.StatusBadRequest, ErrorResponse{Message: "All tickets must belong to the same event"})
 			return
 		}
 	}
@@ -205,20 +205,20 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 		// Get seat details
 		seat, err := server.getSeatByID(token, item.SeatID)
 		if err != nil {
-			ctx.JSON(http.StatusBadRequest, ErrorResponse{fmt.Sprintf("Invalid seat ID: %s", item.SeatID)})
+			ctx.JSON(http.StatusBadRequest, ErrorResponse{Message: fmt.Sprintf("Invalid seat ID: %s", item.SeatID)})
 			return
 		}
 
 		// Check if seat is available
 		if seat.Status != "empty" {
-			ctx.JSON(http.StatusConflict, ErrorResponse{fmt.Sprintf("Seat %s is already reserved or booked", seat.SeatNumber)})
+			ctx.JSON(http.StatusConflict, ErrorResponse{Message: fmt.Sprintf("Seat %s is already reserved or booked", seat.SeatNumber)})
 			return
 		}
 
 		// Verify seat belongs to ticket's seat zone
 		ticket, _ := server.getTicketByID(token, item.TicketID)
 		if seat.SeatZoneID != ticket.SeatZoneID {
-			ctx.JSON(http.StatusBadRequest, ErrorResponse{fmt.Sprintf("Seat %s does not belong to ticket's seat zone", seat.SeatNumber)})
+			ctx.JSON(http.StatusBadRequest, ErrorResponse{Message: fmt.Sprintf("Seat %s does not belong to ticket's seat zone", seat.SeatNumber)})
 			return
 		}
 
@@ -226,7 +226,7 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 		err = server.updateSeatStatus(token, item.SeatID, "reserved", userID)
 		if err != nil {
 			util.LOGGER.Error("POST /api/bookings: failed to reserve seat", "error", err, "seat_id", item.SeatID)
-			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to reserve seat"})
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Failed to reserve seat"})
 			return
 		}
 	}
@@ -247,7 +247,7 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 		util.LOGGER.Error("POST /api/bookings: failed to create booking", "error", err)
 		// Rollback: release reserved seats
 		server.releaseSeats(token, req.Items)
-		ctx.JSON(statusCode, ErrorResponse{err.Error()})
+		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
 		return
 	}
 
@@ -292,7 +292,7 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 			// Rollback: delete booking and release seats
 			server.deleteBooking(token, bookingID)
 			server.releaseSeats(token, req.Items)
-			ctx.JSON(statusCode, ErrorResponse{err.Error()})
+			ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
 			return
 		}
 
@@ -319,7 +319,7 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 		// Rollback
 		server.deleteBooking(token, bookingID)
 		server.releaseSeats(token, req.Items)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to create payment intent"})
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Failed to create payment intent"})
 		return
 	}
 
@@ -343,7 +343,7 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 		// Rollback
 		server.deleteBooking(token, bookingID)
 		server.releaseSeats(token, req.Items)
-		ctx.JSON(statusCode, ErrorResponse{err.Error()})
+		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
 		return
 	}
 
@@ -394,41 +394,41 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 	// Get access token
 	token := server.GetToken(ctx)
 	if token == "" {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
+		ctx.JSON(http.StatusUnauthorized, ErrorResponse{Message: "Unauthorized access"})
 		return
 	}
 
 	// Get user ID
 	userID, err := server.GetUserIDFromToken(token)
 	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Invalid token"})
+		ctx.JSON(http.StatusUnauthorized, ErrorResponse{Message: "Invalid token"})
 		return
 	}
 
 	// Parse request
 	var req ConfirmPaymentRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{err.Error()})
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{Message: err.Error()})
 		return
 	}
 
 	// Get payment details
 	paymentRecord, err := server.getPaymentByID(token, req.PaymentID)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, ErrorResponse{"Payment not found"})
+		ctx.JSON(http.StatusNotFound, ErrorResponse{Message: "Payment not found"})
 		return
 	}
 
 	// Get booking to verify ownership
 	booking, err := server.getBookingByID(token, paymentRecord.BookingID)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, ErrorResponse{"Booking not found"})
+		ctx.JSON(http.StatusNotFound, ErrorResponse{Message: "Booking not found"})
 		return
 	}
 
 	// Verify booking belongs to user
 	if booking.CustomerID != userID {
-		ctx.JSON(http.StatusForbidden, ErrorResponse{"You don't have permission to confirm this payment"})
+		ctx.JSON(http.StatusForbidden, ErrorResponse{Message: "You don't have permission to confirm this payment"})
 		return
 	}
 
@@ -440,7 +440,7 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 		util.LOGGER.Error("POST /api/bookings/confirm-payment: failed to create payment method from token",
 			"error", err,
 			"payment_id", req.PaymentID)
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid payment method token"})
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{Message: "Invalid payment method token"})
 		return
 	}
 
@@ -466,7 +466,7 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 		directusURL := fmt.Sprintf("%s/items/payments/%s", server.config.DirectusAddr, req.PaymentID)
 		util.MakeRequest("PATCH", directusURL, updateData, token, &map[string]any{})
 
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to confirm payment with Stripe"})
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Failed to confirm payment with Stripe"})
 		return
 	}
 
@@ -483,7 +483,7 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 		_, err = util.MakeRequest("PATCH", directusURL, updatePaymentData, token, &map[string]any{})
 		if err != nil {
 			util.LOGGER.Error("POST /api/bookings/confirm-payment: failed to update payment status", "error", err)
-			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to update payment status"})
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Failed to update payment status"})
 			return
 		}
 
@@ -514,7 +514,7 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 		_, err = util.MakeRequest("PATCH", directusURL, updateData, token, &map[string]any{})
 		if err != nil {
 			util.LOGGER.Error("POST /api/bookings/confirm-payment: failed to update payment status", "error", err)
-			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Failed to update payment status"})
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Failed to update payment status"})
 			return
 		}
 
