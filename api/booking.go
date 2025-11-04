@@ -341,7 +341,7 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 		"transaction_id":  paymentIntent.ID,
 		"amount":          finalAmount,
 		"payment_gateway": "Stripe",
-		"payment_method":  "pending",
+		"payment_method":  "visa",
 		"status":          "pending",
 	}
 
@@ -443,12 +443,21 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 	// Initialize Stripe
 	payment.InitStripe(server.config.StripeSecretKey)
 
+	pm, err := payment.CreatePaymentMethodFromToken(req.PaymentMethod)
+	if err != nil {
+		util.LOGGER.Error("POST /api/bookings/confirm-payment: failed to create payment method from token",
+			"error", err,
+			"payment_id", req.PaymentID)
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid payment method token"})
+		return
+	}
+
 	// Confirm payment intent with Stripe
-	returnURL := fmt.Sprintf("%s/payment/confirm", server.config.FrontendURL)
+	// returnURL := fmt.Sprintf("%s/payment/confirm", server.config.FrontendURL)
 	paymentIntent, err := payment.ConfirmPaymentIntent(
 		paymentRecord.TransactionID,
-		req.PaymentMethod,
-		returnURL,
+		pm.ID,
+		"https://example.com/return",
 	)
 	if err != nil {
 		util.LOGGER.Error("POST /api/bookings/confirm-payment: failed to confirm payment intent",
