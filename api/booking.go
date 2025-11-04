@@ -3,370 +3,252 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"tekticket/util"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-type Start_time struct {
-	Start_time string `json:"start_time"`
+type BookingEventInfo struct {
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	Address      string          `json:"address"`
+	City         string          `json:"city"`
+	Country      string          `json:"country"`
+	PreviewImage string          `json:"preview_image"`
+	Category     Category        `json:"category"`
+	Schedules    []EventSchedule `json:"event_schedules"`
 }
 
-type Event struct {
-	EventName      string       `json:"name"`
-	Address        string       `json:"address"`
-	Avatar         string       `json:"preview_image"`
-	EventSchedules []Start_time `json:"event_schedules"`
+type BookingHistory struct {
+	ID        string           `json:"id"`
+	EventInfo BookingEventInfo `json:"event"`
 }
 
-type Ticket_id struct {
-	Description string `json:"description"`
-}
-type Payment struct {
-	Amount string `json:"amount"`
-}
-type Booking_id struct {
-	Payments []Payment `json:"payments"`
-}
-type Booking_items struct {
-	Qr         string    `json:"qr"`
-	Ticket_ids Ticket_id `json:"ticket_id"`
-}
-type MyOrder struct {
-	ID          string    `json:"id"`
-	Events      Event     `json:"event_id"`
-	CreatedAt   time.Time `json:"date_created"`
-	TicketCount string    `json:"ticket_count,omitempty"`
+type directusBookingEventInfo struct {
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	Address      string          `json:"address"`
+	City         string          `json:"city"`
+	Country      string          `json:"country"`
+	PreviewImage string          `json:"preview_image"`
+	Category     Category        `json:"category_id"`
+	Schedules    []EventSchedule `json:"event_schedules"`
 }
 
-type Count_number struct {
-	Count string `json:"count"`
-}
-type MyOrderResponse struct {
-	Bookings []MyOrder `json:"bookings"`
-	// TicketCounts []Count_number `json:"quantity_order"`
+type directusBookingHistory struct {
+	ID        string                   `json:"id"`
+	EventInfo directusBookingEventInfo `json:"event_id"`
 }
 
-// Order_ Detail
-
-type Order_detail struct {
-	Events        Event           `json:"event_id"`
-	CreatedAt     time.Time       `json:"date_created"`
-	Booking_itemx []Booking_items `json:"booking_items"`
-	Booking_idx   Booking_id      `json:"booking_id"`
-}
-type OrderDetailRespone struct {
-	Order        []Order_detail `json:"order_detail"`
-	Count_number []Count_number `json:"quantity_buy"`
-}
-
-func (server *Server) MyOrder(ctx *gin.Context) {
-	layout := "2006-01-02"
-	var time_use time.Time
-	var time_next_use time.Time
-	customer_id := ctx.Param("customer_id")
-	date := ctx.Param("date")
-	var err error
-
-	if date == "" {
-		time_use = time.Now()
-		time_next_use = time_use.AddDate(0, 0, 1)
-	} else {
-		time_use, err = time.Parse(layout, date)
-		if err != nil {
-			ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid date format"})
-			return
-		}
-		time_next_use = time_use.AddDate(0, 0, 1)
-	}
-
-	booking_url := fmt.Sprintf(
-		"%s/items/bookings?fields=id,date_created,event_id.name,event_id.address,event_id.preview_image,event_id.event_schedules.start_time&filter[customer_id][_eq]=%s&filter[date_created][_gte]=%s&filter[date_created][_lt]=%s",
-		server.config.DirectusAddr,
-		customer_id, time_use.Format(layout), time_next_use.Format(layout),
-	)
-
-	type bookings_result struct {
-		Data   []MyOrder
-		Status int
-		Error  error
-	}
-
-	bookings_chan := make(chan bookings_result)
-
-	// Goroutine: Fetch bookings
-	go func() {
-		var bookings []MyOrder
-
-		status, err := util.MakeRequest("GET", booking_url, nil, server.config.DirectusStaticToken, &bookings)
-		if err != nil {
-			bookings_chan <- bookings_result{nil, status, err}
-			return
-		}
-		bookings_chan <- bookings_result{bookings, status, nil}
-	}()
-
-	bookingsResult := <-bookings_chan
-
-	// Kiểm tra lỗi
-	if bookingsResult.Error != nil {
-		util.LOGGER.Error("Failed to fetch bookings", "error", bookingsResult.Error)
-		ctx.JSON(bookingsResult.Status, ErrorResponse{bookingsResult.Error.Error()})
+// ListBookingHistory godoc
+// @Summary      Get user's booking history
+// @Description  Retrieves the list of completed bookings for the authenticated user, including event and category details.
+// @Tags        Bookings
+// @Accept       json
+// @Produce      json
+// @Param        limit          query     int     false  "Maximum number of records to return (default: 50)"
+// @Param        offset         query     int     false  "Number of records to skip before returning results (default: 0)"
+// @Param        sort           query     string  false  "Sort order, e.g. -date_created (default)"
+// @Success      200  {array}   BookingHistory    "List of completed bookings retrieved successfully"
+// @Failure      400  {object}  ErrorResponse     "Invalid token or parameters"
+// @Failure      401  {object}  ErrorResponse     "Unauthorized access"
+// @Failure      500  {object}  ErrorResponse     "Internal server error or failed to communicate with Directus"
+// @Security BearerAuth
+// @Router       /api/bookings [get]
+func (server *Server) ListBookingHistory(ctx *gin.Context) {
+	// Get access token
+	token := server.GetToken(ctx)
+	if token == "" {
+		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
 		return
 	}
 
-	if len(bookingsResult.Data) == 0 {
-		ctx.JSON(http.StatusOK, MyOrderResponse{Bookings: []MyOrder{}})
+	// Get user ID from access token
+	id, err := util.ExtractIDFromToken(token)
+	if err != nil {
+		util.LOGGER.Error("GET /api/profile/bookings: failed to extract user ID from access token", "error", err)
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid token"})
 		return
 	}
 
-	// Lấy ticket count cho từng booking
-	type countResult struct {
-		index int
-		count string
-		err   error
+	// Build the URL query
+	queryParams := url.Values{}
+	fields := []string{
+		"id",
+		"event_id.id", "event_id.name", "event_id.address", "event_id.city", "event_id.country", "event_id.preview_image",
+		"event_id.event_schedules.id", "event_id.event_schedules.start_time", "event_id.event_schedules.end_time",
+		"event_id.event_schedules.start_checkin_time", "event_id.event_schedules.end_checkin_time",
+		"event_id.category_id.id", "event_id.category_id.name", "event_id.category_id.description",
 	}
+	queryParams.Add("fields", strings.Join(fields, ","))
+	queryParams.Add("filter[customer_id][_eq]", id)
+	queryParams.Add("filter[status][_icontains]", "complete")
 
-	countChan := make(chan countResult, len(bookingsResult.Data))
-
-	// Tạo goroutine cho mỗi booking
-	for i, booking := range bookingsResult.Data {
-		go func(index int, bookingID string) {
-			number_booking_ticket := fmt.Sprintf(
-				"%s/items/booking_items?filter[booking_id][_eq]=%s&aggregate[count]=*",
-				server.config.DirectusAddr,
-				bookingID,
-			)
-
-			var ticketCounts []Count_number
-
-			_, err := util.MakeRequest("GET", number_booking_ticket, nil, server.config.DirectusStaticToken, &ticketCounts)
-
-			ticketCount := "0"
-			if err == nil && len(ticketCounts) > 0 {
-				ticketCount = ticketCounts[0].Count
-			}
-
-			countChan <- countResult{
-				index: index,
-				count: ticketCount,
-				err:   err,
-			}
-		}(i, booking.ID)
-	}
-
-	// Thu thập kết quả
-	bookingsWithCount := make([]MyOrder, len(bookingsResult.Data))
-	for i := 0; i < len(bookingsResult.Data); i++ {
-		res := <-countChan
-		bookingsWithCount[res.index] = MyOrder{
-			ID:          bookingsResult.Data[res.index].ID,
-			Events:      bookingsResult.Data[res.index].Events,
-			CreatedAt:   bookingsResult.Data[res.index].CreatedAt,
-			TicketCount: res.count,
-		}
-		if res.err != nil {
-			util.LOGGER.Warn("Failed to fetch ticket count", "index", res.index, "error", res.err)
+	// Pagination
+	limit := 50
+	if limitStr := ctx.Query("limit"); limitStr != "" {
+		if val, err := strconv.Atoi(limitStr); err == nil && val > 0 {
+			limit = val
 		}
 	}
+	queryParams.Add("limit", strconv.Itoa(limit))
 
-	response := MyOrderResponse{
-		Bookings: bookingsWithCount,
+	offset := 0
+	if offsetStr := ctx.Query("offset"); offsetStr != "" {
+		if val, err := strconv.Atoi(offsetStr); err == nil && val >= 0 {
+			offset = val
+		}
+	}
+	queryParams.Add("offset", strconv.Itoa(offset))
+
+	// Sort
+	sort := ctx.Query("sort")
+	if sort == "" {
+		sort = "-date_created" // Default: newest first
+	}
+	queryParams.Add("sort", sort)
+
+	// Build the URL
+	directusURL := fmt.Sprintf("%s/items/bookings?%s", server.config.DirectusAddr, queryParams.Encode())
+
+	// Make request to Directus
+	var directusResult []directusBookingHistory
+	statusCode, err := util.MakeRequest("GET", directusURL, nil, token, &directusResult)
+	if err != nil {
+		util.LOGGER.Error("GET /api/bookings/:id: failed to get booking history from Directus", "error", err)
+		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
+		return
 	}
 
-	ctx.JSON(http.StatusOK, response)
+	// Build result
+	history := make([]BookingHistory, len(directusResult))
+	for i, result := range directusResult {
+		history[i] = BookingHistory{
+			ID: result.ID,
+			EventInfo: BookingEventInfo{
+				ID:           result.EventInfo.ID,
+				Name:         result.EventInfo.Name,
+				Address:      result.EventInfo.Address,
+				City:         result.EventInfo.City,
+				Country:      result.EventInfo.Country,
+				PreviewImage: util.CreateImageLink(result.EventInfo.PreviewImage),
+				Category:     result.EventInfo.Category,
+				Schedules:    result.EventInfo.Schedules,
+			},
+		}
+	}
+
+	ctx.JSON(http.StatusOK, history)
 }
 
-//
-
-func (server *Server) OrderDetail(ctx *gin.Context) {
-	booking_id := ctx.Param("booking_id")
-	booking_url := fmt.Sprintf(
-		"%s/items/bookings?fields=date_created,event_id.name,event_id.address,event_id.preview_image,event_id.event_schedules.start_time,booking_items.qr,booking_items.ticket_id.description,booking_items.booking_id.payments.amount&filter[id][_eq]=%s",
-		server.config.DirectusAddr,
-		booking_id,
-	)
-
-	number_booking_ticket := fmt.Sprintf("%s/items/booking_items?filter[booking_id][_eq]=%s&aggregate[count]=*", server.config.DirectusAddr, booking_id)
-
-	type Order_detail_result struct {
-		Data   []Order_detail
-		Status int
-		Error  error
-	}
-
-	type number_ticket_result struct {
-		Data   []Count_number
-		Status int
-		Error  error
-	}
-
-	order_detail_chan := make(chan Order_detail_result)
-	number_ticket_result_chan := make(chan number_ticket_result)
-
-	// Goroutine 1: Fetch bookings
-	go func() {
-		var order []Order_detail
-
-		status, err := util.MakeRequest("GET", booking_url, nil, server.config.DirectusStaticToken, &order)
-		if err != nil {
-			order_detail_chan <- Order_detail_result{nil, status, err}
-			return
-		}
-		order_detail_chan <- Order_detail_result{order, status, nil}
-	}()
-
-	// Goroutine 2: Fetch ticket count
-	go func() {
-		var ticketCounts []Count_number
-
-		status, err := util.MakeRequest("GET", number_booking_ticket, nil, server.config.DirectusStaticToken, &ticketCounts)
-		if err != nil {
-			number_ticket_result_chan <- number_ticket_result{nil, status, err}
-			return
-		}
-		number_ticket_result_chan <- number_ticket_result{ticketCounts, status, nil}
-	}()
-
-	orderDetailResult := <-order_detail_chan
-	ticketCountResult := <-number_ticket_result_chan
-
-	// Kiểm tra lỗi
-	if orderDetailResult.Error != nil {
-		util.LOGGER.Error("Failed to fetch bookings", "error", orderDetailResult.Error)
-		ctx.JSON(orderDetailResult.Status, ErrorResponse{orderDetailResult.Error.Error()})
-		return
-	}
-
-	if ticketCountResult.Error != nil {
-		util.LOGGER.Error("Failed to fetch ticket count", "error", ticketCountResult.Error)
-		ctx.JSON(ticketCountResult.Status, ErrorResponse{ticketCountResult.Error.Error()})
-		return
-	}
-	response := OrderDetailRespone{
-		Order:        orderDetailResult.Data,
-		Count_number: ticketCountResult.Data,
-	}
-
-	ctx.JSON(http.StatusOK, response)
+type BookingTicket struct {
+	ID    string `json:"id"`
+	Price int    `json:"price"`
+	QR    string `json:"qr"`
+	Seat  Seat   `json:"seat"`
 }
 
-// My ticket
+type BookingDetail struct {
+	ID          string           `json:"id"`
+	BookingDate string           `json:"booking_date"`
+	EventInfo   BookingEventInfo `json:"event"`
+	Tickets     []BookingTicket  `json:"tickets"`
+	TotalPrice  int              `json:"price "`
+}
 
-func (server *Server) MyTicket(ctx *gin.Context) {
-	layout := "2006-01-02"
-	var time_use time.Time
-	var time_next_use time.Time
-	booking_id := ctx.Param("booking_id")
-	date := ctx.Param("date")
-	var err error
+type directusBookingTicket struct {
+	ID    string `json:"id"`
+	Price int    `json:"price"`
+	QR    string `json:"qr"`
+	Seat  Seat   `json:"seat_id"`
+}
 
-	if date == "" {
-		time_use = time.Now()
-		time_next_use = time_use.AddDate(0, 0, 1)
-	} else {
-		time_use, err = time.Parse(layout, date)
-		if err != nil {
-			ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid date format"})
-			return
-		}
-		time_next_use = time_use.AddDate(0, 0, 1)
-	}
+type directusBookingDetail struct {
+	ID          string                   `json:"id"`
+	BookingDate string                   `json:"date_created"`
+	EventInfo   directusBookingEventInfo `json:"event_id"`
+	Tickets     []directusBookingTicket  `json:"booking_items"`
+	TotalPrice  int                      `json:"price "`
+}
 
-	booking_url := fmt.Sprintf(
-		"%s/items/booking_items?fields=date_created,booking_id.event_id.name,booking_id.event_id.address,booking_id.event_id.preview_image,booking_id.event_id.event_schedules.start_time&filter[booking_id][_eq]=%s&filter[date_created][_gte]=%s&filter[date_created][_lt]=%s",
-		server.config.DirectusAddr, booking_id,
-		time_use.Format(layout), time_next_use.Format(layout),
-	)
-
-	type bookings_result struct {
-		Data   []MyOrder
-		Status int
-		Error  error
-	}
-
-	bookings_chan := make(chan bookings_result)
-
-	// Goroutine: Fetch bookings
-	go func() {
-		var bookings []MyOrder
-
-		status, err := util.MakeRequest("GET", booking_url, nil, server.config.DirectusStaticToken, &bookings)
-		if err != nil {
-			bookings_chan <- bookings_result{nil, status, err}
-			return
-		}
-		bookings_chan <- bookings_result{bookings, status, nil}
-	}()
-
-	bookingsResult := <-bookings_chan
-
-	// Kiểm tra lỗi
-	if bookingsResult.Error != nil {
-		util.LOGGER.Error("Failed to fetch bookings", "error", bookingsResult.Error)
-		ctx.JSON(bookingsResult.Status, ErrorResponse{bookingsResult.Error.Error()})
+// GetBooking godoc
+// @Summary      Get booking detail
+// @Description  Retrieves the detailed information of a specific booking, including event details, schedules, and ticket data.
+// @Tags         Bookings
+// @Accept       json
+// @Produce      json
+// @Param        id             path      string  true   "Booking ID"
+// @Success      200  {object}  BookingDetail     "Booking detail retrieved successfully"
+// @Failure      400  {object}  ErrorResponse     "Invalid request parameters"
+// @Failure      401  {object}  ErrorResponse     "Unauthorized access"
+// @Failure      404  {object}  ErrorResponse     "Booking not found"
+// @Failure      500  {object}  ErrorResponse     "Internal server error or failed to communicate with Directus"
+// @Security BearerAuth
+// @Router       /api/bookings/{id} [get]
+func (server *Server) GetBooking(ctx *gin.Context) {
+	// Get access token
+	token := server.GetToken(ctx)
+	if token == "" {
+		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
 		return
 	}
 
-	if len(bookingsResult.Data) == 0 {
-		ctx.JSON(http.StatusOK, MyOrderResponse{Bookings: []MyOrder{}})
+	// Get booking ID from path paramter
+	id := ctx.Param("id")
+
+	// Build the query parameter
+	queryParams := url.Values{}
+	fields := []string{
+		"id", "status", "date_created",
+		"event_id.id", "event_id.name", "event_id.address", "event_id.city", "event_id.country", "event_id.preview_image",
+		"event_id.event_schedules.id", "event_id.event_schedules.start_time", "event_id.event_schedules.end_time",
+		"event_id.event_schedules.start_checkin_time", "event_id.event_schedules.end_checkin_time",
+		"event_id.category_id.id", "event_id.category_id.name", "event_id.category_id.description",
+		"booking_items.id", "booking_items.price", "booking_items.qr",
+		"booking_items.seat_id.id", "booking_items.seat_id.seat_number",
+	}
+	queryParams.Add("fields", strings.Join(fields, ","))
+
+	// Make request to Directus
+	url := fmt.Sprintf("%s/items/bookings/%s?%s", server.config.DirectusAddr, id, queryParams.Encode())
+	var directusResult directusBookingDetail
+	statusCode, err := util.MakeRequest("GET", url, nil, token, &directusResult)
+	if err != nil {
+		util.LOGGER.Error("GET /api/bookings/:id: failed to get booking detail from Directus", "error", err, "id", id)
+		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
 		return
 	}
 
-	// Lấy ticket count cho từng booking
-	type countResult struct {
-		index int
-		count string
-		err   error
+	// Build result object
+	detail := BookingDetail{
+		ID:          directusResult.ID,
+		BookingDate: directusResult.BookingDate,
+		EventInfo: BookingEventInfo{
+			ID:           directusResult.EventInfo.ID,
+			Name:         directusResult.EventInfo.Name,
+			Address:      directusResult.EventInfo.Address,
+			City:         directusResult.EventInfo.City,
+			Country:      directusResult.EventInfo.Country,
+			PreviewImage: util.CreateImageLink(directusResult.EventInfo.PreviewImage),
+			Category:     directusResult.EventInfo.Category,
+			Schedules:    directusResult.EventInfo.Schedules,
+		},
+		Tickets:    make([]BookingTicket, len(directusResult.Tickets)),
+		TotalPrice: 0,
 	}
 
-	countChan := make(chan countResult, len(bookingsResult.Data))
-
-	// Tạo goroutine cho mỗi booking
-	for i, booking := range bookingsResult.Data {
-		go func(index int, bookingID string) {
-			number_booking_ticket := fmt.Sprintf(
-				"%s/items/booking_items?filter[booking_id][_eq]=%s&aggregate[count]=*",
-				server.config.DirectusAddr,
-				bookingID,
-			)
-
-			var ticketCounts []Count_number
-
-			_, err := util.MakeRequest("GET", number_booking_ticket, nil, server.config.DirectusStaticToken, &ticketCounts)
-
-			ticketCount := "0"
-			if err == nil && len(ticketCounts) > 0 {
-				ticketCount = ticketCounts[0].Count
-			}
-
-			countChan <- countResult{
-				index: index,
-				count: ticketCount,
-				err:   err,
-			}
-		}(i, booking.ID)
-	}
-
-	// Thu thập kết quả
-	bookingsWithCount := make([]MyOrder, len(bookingsResult.Data))
-	for i := 0; i < len(bookingsResult.Data); i++ {
-		res := <-countChan
-		bookingsWithCount[res.index] = MyOrder{
-			ID:          bookingsResult.Data[res.index].ID,
-			Events:      bookingsResult.Data[res.index].Events,
-			CreatedAt:   bookingsResult.Data[res.index].CreatedAt,
-			TicketCount: res.count,
+	for i, ticket := range directusResult.Tickets {
+		detail.Tickets[i] = BookingTicket{
+			ID:    ticket.ID,
+			Price: ticket.Price,
+			QR:    util.CreateImageLink(ticket.QR),
+			Seat:  ticket.Seat,
 		}
-		if res.err != nil {
-			util.LOGGER.Warn("Failed to fetch ticket count", "index", res.index, "error", res.err)
-		}
+		detail.TotalPrice += ticket.Price
 	}
 
-	response := MyOrderResponse{
-		Bookings: bookingsWithCount,
-	}
-
-	ctx.JSON(http.StatusOK, response)
+	ctx.JSON(http.StatusOK, detail)
 }

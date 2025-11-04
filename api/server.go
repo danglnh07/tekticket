@@ -67,6 +67,7 @@ func (server *Server) RegisterHandler() {
 			ctx.JSON(http.StatusOK, gin.H{"message": "Hello world"})
 		})
 
+		// Auth routes
 		auth := api.Group("/auth")
 		{
 			auth.POST("/register", server.Register)
@@ -79,35 +80,27 @@ func (server *Server) RegisterHandler() {
 			auth.POST("/password/reset", server.ResetPassword)
 		}
 
-		myBooking := api.Group("/mybooking")
-		{
-			myBooking.GET("/:customer_id/:booking_id", server.MyOrder)
-
-			myBooking.GET("/:customer_id/:booking_id/:date", server.MyOrder)
-		}
-
-		orderDetail := api.Group("/orderdetail")
-		{
-
-			orderDetail.GET("/:booking_id", server.OrderDetail)
-		}
-
-		myTicket := api.Group("/myticket")
-		{
-
-			myTicket.GET("/:customer_id/:booking_id/:date", server.MyOrder)
-		}
+		// Profile routes
 		profile := api.Group("/profile")
 		{
 			profile.GET("", server.GetProfile)
 			profile.PUT("", server.UpdateProfile)
 		}
 
+		// Booking
+		booking := api.Group("/bookings")
+		{
+			booking.GET("", server.ListBookingHistory)
+			booking.GET("/:id", server.GetBooking)
+		}
+
+		// Categories routes
 		categories := api.Group("/categories")
 		{
 			categories.GET("", server.GetCategories)
 		}
 
+		// Event routes
 		events := api.Group("/events")
 		{
 			events.GET("", server.ListEvents)
