@@ -79,6 +79,24 @@ func (server *Server) RegisterHandler() {
 			auth.POST("/password/reset", server.ResetPassword)
 		}
 
+		myBooking := api.Group("/mybooking")
+		{
+			myBooking.GET("/:customer_id/:booking_id", server.MyOrder)
+
+			myBooking.GET("/:customer_id/:booking_id/:date", server.MyOrder)
+		}
+
+		orderDetail := api.Group("/orderdetail")
+		{
+
+			orderDetail.GET("/:booking_id", server.OrderDetail)
+		}
+
+		myTicket := api.Group("/myticket")
+		{
+
+			myTicket.GET("/:customer_id/:booking_id/:date", server.MyOrder)
+		}
 		profile := api.Group("/profile")
 		{
 			profile.GET("", server.GetProfile)
@@ -108,6 +126,7 @@ func (server *Server) RegisterHandler() {
 		{
 			webhook.POST("/telegram", server.TelegramWebhook)
 		}
+
 	}
 
 	// Swagger docs

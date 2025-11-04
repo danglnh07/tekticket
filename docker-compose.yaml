@@ -54,6 +54,7 @@ services:
         image: redis:8.2-alpine3.22
         ports:
             - 6379:6379
+
         healthcheck:
             test: ["CMD", "redis-cli", "ping"]
             interval: 5s
@@ -73,6 +74,7 @@ services:
         command: start --all --config /etc/ngrok.yml
         ports:
             - 4040:4040
+
     app:
         build:
             context: .
