@@ -148,6 +148,31 @@ definitions:
       tier:
         type: string
     type: object
+  api.NotificationRequest:
+    properties:
+      body:
+        description: Notification body
+        type: string
+      dest_email:
+        description: The destination email, if allow sending email notification
+        type: string
+      dest_inapp:
+        description: The channel to send the in app notification using Pub/Sub model
+        type: string
+      dest_telegram:
+        description: The chat ID of telegram, if allow telegram notification
+        type: integer
+      name:
+        description: Event name (in can be the notification category)
+        type: string
+      queue:
+        description: 'The impact of this notification. It can be: low, default or
+          critical'
+        type: string
+      title:
+        description: Notification title
+        type: string
+    type: object
   api.ProfileResponse:
     properties:
       avatar:
@@ -723,6 +748,37 @@ paths:
       summary: Get customer membership info
       tags:
       - Memberships
+  /api/notifications/webhook:
+    post:
+      consumes:
+      - application/json
+      description: Receives webhook payloads from Directus flows and dispatches notifications
+        to various destinations (in-app, Telegram, email) using background workers.
+      parameters:
+      - description: Notification webhook payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.NotificationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Notification dispatched successfully
+          schema:
+            $ref: '#/definitions/api.SuccessMessage'
+        "400":
+          description: Invalid request body or missing required destinations
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to distribute background task
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Handle Directus notification webhook
+      tags:
+      - Notifications
   /api/profile:
     get:
       consumes:

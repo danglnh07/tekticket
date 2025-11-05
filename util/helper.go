@@ -190,5 +190,5 @@ func FormatWarningHTML(text string) string {
 // Helper: format HTML notification message for Telegram
 func FormatNotificationHTML(title, body string) string {
 	// Body should already be an HTML template, so we don't do anything to it
-	return fmt.Sprintf("<h1>%s</h1><br>%s", strings.ToUpper(title), body)
+	return fmt.Sprintf("<b>%s</b>\n\n%s", strings.ToUpper(title), body)
 }

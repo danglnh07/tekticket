@@ -24,6 +24,7 @@ func (server *Server) TelegramWebhook(ctx *gin.Context) {
 
 	chatID := req.Message.Chat.ID
 	message := strings.TrimSpace(req.Message.Text)
+	util.LOGGER.Info("Receive telegram message", "chat_id", chatID, "message", message)
 
 	// Send chat action indicate we are processing
 	if err := server.bot.SendChatAction(chatID, bot.CHAT_ACTION); err != nil {
@@ -163,6 +164,17 @@ type NotificationRequest struct {
 	DestTelegram int    `json:"dest_telegram"` // The chat ID of telegram, if allow telegram notification
 }
 
+// NotificationWebhook godoc
+// @Summary      Handle Directus notification webhook
+// @Description  Receives webhook payloads from Directus flows and dispatches notifications to various destinations (in-app, Telegram, email) using background workers.
+// @Tags         Notifications
+// @Accept       json
+// @Produce      json
+// @Param        request  body  NotificationRequest  true  "Notification webhook payload"
+// @Success      200  {object}  SuccessMessage       "Notification dispatched successfully"
+// @Failure      400  {object}  ErrorResponse        "Invalid request body or missing required destinations"
+// @Failure      500  {object}  ErrorResponse        "Internal server error or failed to distribute background task"
+// @Router       /api/notifications/webhook [post]
 func (server *Server) NotificationWebhook(ctx *gin.Context) {
 	// This webhook is used for Directus's flows to send notification back to the server for processing
 	var req NotificationRequest
@@ -172,13 +184,36 @@ func (server *Server) NotificationWebhook(ctx *gin.Context) {
 		return
 	}
 
+	util.LOGGER.Info("Receive notification",
+		"telegram", req.DestTelegram,
+		"email", req.DestEmail,
+		"title", req.Title,
+		"body", req.Body,
+		"name", req.Name,
+	)
+
 	if req.Queue = strings.ToLower(req.Queue); !worker.IsQueueLevelExists(req.Queue) {
 		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Only accept low, default or critical for queue value"})
 	}
 
 	// Send notification to in app channel
 	if req.DestInApp != "" {
-		err := server.distributor.DistributeTask(ctx, worker.SendInAppNotification, req, asynq.MaxRetry(25), asynq.Queue(req.Queue))
+		err := server.distributor.DistributeTask(
+			ctx,
+			worker.SendInAppNotification,
+			worker.SendNotificationPayload{
+				Name:  req.Name,
+				Title: req.Title,
+				Body:  req.Body,
+				Dest: worker.NotificationChannel{
+					Email:   req.DestEmail,
+					Channel: req.DestInApp,
+					ChatID:  req.DestTelegram,
+				},
+			},
+			asynq.MaxRetry(25),
+			asynq.Queue(req.Queue),
+		)
 		if err != nil {
 			util.LOGGER.Error(
 				"POST /api/notifications/webhook: failed to distribute task",
@@ -194,7 +229,22 @@ func (server *Server) NotificationWebhook(ctx *gin.Context) {
 	}
 
 	if req.DestTelegram != 0 {
-		err := server.distributor.DistributeTask(ctx, worker.SendInAppNotification, req, asynq.MaxRetry(25), asynq.Queue(req.Queue))
+		err := server.distributor.DistributeTask(
+			ctx,
+			worker.SendTelegramNotification,
+			worker.SendNotificationPayload{
+				Name:  req.Name,
+				Title: req.Title,
+				Body:  req.Body,
+				Dest: worker.NotificationChannel{
+					Email:   req.DestEmail,
+					Channel: req.DestInApp,
+					ChatID:  req.DestTelegram,
+				},
+			},
+			asynq.MaxRetry(1),
+			asynq.Queue(req.Queue),
+		)
 		if err != nil {
 			util.LOGGER.Error(
 				"POST /api/notifications/webhook: failed to distribute task",
@@ -207,7 +257,22 @@ func (server *Server) NotificationWebhook(ctx *gin.Context) {
 	}
 
 	if req.DestEmail != "" {
-		err := server.distributor.DistributeTask(ctx, worker.SendInAppNotification, req, asynq.MaxRetry(25), asynq.Queue(req.Queue))
+		err := server.distributor.DistributeTask(
+			ctx,
+			worker.SendEmailNotification,
+			worker.SendNotificationPayload{
+				Name:  req.Name,
+				Title: req.Title,
+				Body:  req.Body,
+				Dest: worker.NotificationChannel{
+					Email:   req.DestEmail,
+					Channel: req.DestInApp,
+					ChatID:  req.DestTelegram,
+				},
+			},
+			asynq.MaxRetry(1),
+			asynq.Queue(req.Queue),
+		)
 		if err != nil {
 			util.LOGGER.Error(
 				"POST /api/notifications/webhook: failed to distribute task",
