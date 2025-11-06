@@ -87,11 +87,19 @@ func (server *Server) RegisterHandler() {
 			profile.PUT("", server.UpdateProfile)
 		}
 
-		// Booking
+		// Booking routes
 		booking := api.Group("/bookings")
 		{
 			booking.GET("", server.ListBookingHistory)
 			booking.GET("/:id", server.GetBooking)
+			booking.POST("", server.CreateBooking)
+		}
+
+		// Payment routes
+		payments := api.Group("/payments") // Avoid using the word 'payment' to prevent collision with the payment package
+		{
+			payments.POST("", server.CreatePayment)
+			payments.POST("/:id/confirm", server.ConfirmPayment)
 		}
 
 		// Categories routes
@@ -111,7 +119,7 @@ func (server *Server) RegisterHandler() {
 		memberships := api.Group("/memberships")
 		{
 			memberships.GET("", server.ListMemberships)
-			memberships.GET("/:id", server.GetUserMembership)
+			memberships.GET("/me", server.GetUserMembership)
 		}
 
 		// Webhook handler
@@ -129,7 +137,7 @@ func (server *Server) RegisterHandler() {
 	server.router.GET("/images/:id", func(ctx *gin.Context) {
 		id := ctx.Param("id")
 
-		// Since we need the Response object for redirecting, so we'll manually make request here, not using the util.MakeRequest
+		// Since we need the Response object for redirecting, so we'll manually make request here, not using the db.MakeRequest
 		url := fmt.Sprintf("%s/assets/%s", server.config.DirectusAddr, id)
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
@@ -199,7 +207,7 @@ func (server *Server) UploadImage(ctx *gin.Context, image string) (string, error
 	// Upload the image into Directus
 	url := server.config.DirectusAddr + "/files/import"
 	var imageResp ImageResponse
-	status, err := util.MakeRequest(
+	status, err := db.MakeRequest(
 		"POST",
 		url,
 		map[string]any{"url": cloudResp.SecureURL},

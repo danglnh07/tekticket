@@ -11,6 +11,7 @@ import (
 	"tekticket/db"
 	"tekticket/service/bot"
 	"tekticket/service/notify"
+	"tekticket/service/payment"
 	"tekticket/service/uploader"
 	"tekticket/service/worker"
 	"tekticket/util"
@@ -59,6 +60,7 @@ func main() {
 		util.LOGGER.Error("Failed to setup chatbot", "error", err)
 		os.Exit(1)
 	}
+	payment.InitStripe(config.StripeSecretKey)
 
 	// Start the background server in separate goroutine (since it's will block the main thread)
 

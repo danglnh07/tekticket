@@ -87,5 +87,24 @@ func (processor *RedisTaskProcessor) Start() error {
 
 	})
 
+	mux.HandleFunc(PublishQRTicket, func(ctx context.Context, t *asynq.Task) error {
+		// Unmarshal payload
+		var payload PublishQRTicketPayload
+		if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+			util.LOGGER.Error("failed to process task", "task", PublishQRTicket, "error", err)
+			return err
+		}
+
+		err := processor.PublishQRTicket(payload)
+		if err != nil {
+			util.LOGGER.Error("failed to process task", "task", PublishQRTicket, "error", err)
+			return err
+		}
+
+		util.LOGGER.Info("task success", "task", PublishQRTicket)
+		return nil
+
+	})
+
 	return processor.server.Start(mux)
 }

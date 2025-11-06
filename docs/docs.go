@@ -440,12 +440,70 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/api.BookingHistory"
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/db.Booking"
+                                }
                             }
                         }
                     },
                     "400": {
                         "description": "Invalid token or parameters",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized access",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error or failed to communicate with Directus",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new booking for an event, including its associated ticket and seat items.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Bookings"
+                ],
+                "summary": "Create a new booking",
+                "parameters": [
+                    {
+                        "description": "Booking creation payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.CreateBookingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Booking created successfully",
+                        "schema": {
+                            "$ref": "#/definitions/api.CreateBookingResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -496,7 +554,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Booking detail retrieved successfully",
                         "schema": {
-                            "$ref": "#/definitions/api.BookingDetail"
+                            "$ref": "#/definitions/db.Booking"
                         }
                     },
                     "400": {
@@ -550,7 +608,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/api.Category"
+                                "$ref": "#/definitions/db.Category"
                             }
                         }
                     },
@@ -679,7 +737,7 @@ const docTemplate = `{
                 "tags": [
                     "Events"
                 ],
-                "summary": "Retrieve a single event by ID",
+                "summary": "Retrieve a single event by ID or by its slug",
                 "parameters": [
                     {
                         "type": "string",
@@ -693,7 +751,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Event details retrieved successfully",
                         "schema": {
-                            "$ref": "#/definitions/api.EventDetail"
+                            "$ref": "#/definitions/db.Event"
                         }
                     },
                     "400": {
@@ -747,7 +805,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/api.MembershipTier"
+                                "$ref": "#/definitions/db.Membership"
                             }
                         }
                     },
@@ -766,7 +824,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/memberships/{user_id}": {
+        "/api/memberships/me": {
             "get": {
                 "security": [
                     {
@@ -784,15 +842,6 @@ const docTemplate = `{
                     "Memberships"
                 ],
                 "summary": "Get customer membership info",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "User ID",
-                        "name": "user_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
                 "responses": {
                     "200": {
                         "description": "Customer membership info",
@@ -808,6 +857,127 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/payments": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a Stripe payment intent and records the payment information in the database for a booking.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Payments"
+                ],
+                "summary": "Create a new payment",
+                "parameters": [
+                    {
+                        "description": "Payment creation payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.CreatePaymentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Payment created successfully",
+                        "schema": {
+                            "$ref": "#/definitions/api.CreatePaymentResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized access",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error or failed to communicate with Stripe/Directus",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/payments/{id}/confirm": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Confirms a Stripe payment intent and updates the payment record in the database with the confirmation status.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Payments"
+                ],
+                "summary": "Confirm an existing payment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Payment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Payment confirmation payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.ConfirmPaymentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Payment confirmed successfully",
+                        "schema": {
+                            "$ref": "#/definitions/db.Payment"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized access",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error or failed to confirm payment in Stripe/Directus",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -912,113 +1082,113 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "api.BookingDetail": {
+        "api.BookingItemCreate": {
             "type": "object",
+            "required": [
+                "event_schedule_id",
+                "seat_id",
+                "ticket_id"
+            ],
             "properties": {
-                "booking_date": {
+                "event_schedule_id": {
                     "type": "string"
                 },
+                "seat_id": {
+                    "type": "string"
+                },
+                "ticket_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.ConfirmPaymentRequest": {
+            "type": "object",
+            "required": [
+                "payment_intent_id",
+                "payment_method_id"
+            ],
+            "properties": {
+                "payment_intent_id": {
+                    "type": "string"
+                },
+                "payment_method_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.CreateBookingRequest": {
+            "type": "object",
+            "required": [
+                "event_id",
+                "items"
+            ],
+            "properties": {
+                "event_id": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/api.BookingItemCreate"
+                    }
+                }
+            }
+        },
+        "api.CreateBookingResponse": {
+            "type": "object",
+            "properties": {
+                "customer": {
+                    "$ref": "#/definitions/db.User"
+                },
                 "event": {
-                    "$ref": "#/definitions/api.BookingEventInfo"
+                    "$ref": "#/definitions/db.Event"
+                },
+                "fee_charged": {
+                    "type": "integer"
                 },
                 "id": {
                     "type": "string"
                 },
-                "price": {
-                    "type": "integer"
+                "status": {
+                    "type": "string"
                 },
                 "tickets": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/api.BookingTicket"
-                    }
-                }
-            }
-        },
-        "api.BookingEventInfo": {
-            "type": "object",
-            "properties": {
-                "address": {
-                    "type": "string"
-                },
-                "category": {
-                    "$ref": "#/definitions/api.Category"
-                },
-                "city": {
-                    "type": "string"
-                },
-                "country": {
-                    "type": "string"
-                },
-                "event_schedules": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/api.EventSchedule"
+                        "$ref": "#/definitions/db.BookingItem"
                     }
                 },
-                "id": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "preview_image": {
-                    "type": "string"
+                "total_price_paid": {
+                    "type": "integer"
                 }
             }
         },
-        "api.BookingHistory": {
+        "api.CreatePaymentRequest": {
             "type": "object",
+            "required": [
+                "amount",
+                "booking_id"
+            ],
             "properties": {
-                "event": {
-                    "$ref": "#/definitions/api.BookingEventInfo"
-                },
-                "id": {
-                    "type": "string"
-                }
-            }
-        },
-        "api.BookingTicket": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "string"
-                },
-                "price": {
+                "amount": {
                     "type": "integer"
                 },
-                "qr": {
-                    "type": "string"
-                },
-                "seat": {
-                    "$ref": "#/definitions/api.Seat"
-                }
-            }
-        },
-        "api.Category": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "name": {
+                "booking_id": {
                     "type": "string"
                 }
             }
         },
-        "api.Creator": {
+        "api.CreatePaymentResponse": {
             "type": "object",
             "properties": {
-                "email": {
+                "client_secret": {
                     "type": "string"
                 },
-                "first_name": {
-                    "type": "string"
+                "payment": {
+                    "$ref": "#/definitions/db.Payment"
                 },
-                "last_name": {
+                "publishable_key": {
                     "type": "string"
                 }
             }
@@ -1028,59 +1198,6 @@ const docTemplate = `{
             "properties": {
                 "error": {
                     "type": "string"
-                }
-            }
-        },
-        "api.EventDetail": {
-            "type": "object",
-            "properties": {
-                "address": {
-                    "type": "string"
-                },
-                "categories": {
-                    "$ref": "#/definitions/api.Category"
-                },
-                "city": {
-                    "type": "string"
-                },
-                "country": {
-                    "type": "string"
-                },
-                "creator": {
-                    "$ref": "#/definitions/api.Creator"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "event_schedules": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/api.EventSchedule"
-                    }
-                },
-                "id": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "preview_image": {
-                    "type": "string"
-                },
-                "seat_zones": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/api.SeatZone"
-                    }
-                },
-                "slug": {
-                    "type": "string"
-                },
-                "tickets": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/api.Ticket"
-                    }
                 }
             }
         },
@@ -1095,7 +1212,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "category": {
-                    "$ref": "#/definitions/api.Category"
+                    "$ref": "#/definitions/db.Category"
                 },
                 "city": {
                     "type": "string"
@@ -1114,26 +1231,6 @@ const docTemplate = `{
                 },
                 "start_time": {
                     "description": "Closest upcoming schedule time",
-                    "type": "string"
-                }
-            }
-        },
-        "api.EventSchedule": {
-            "type": "object",
-            "properties": {
-                "end_checkin_time": {
-                    "type": "string"
-                },
-                "end_time": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "start_checkin_time": {
-                    "type": "string"
-                },
-                "start_time": {
                     "type": "string"
                 }
             }
@@ -1192,30 +1289,6 @@ const docTemplate = `{
                 },
                 "points": {
                     "type": "integer"
-                },
-                "tier": {
-                    "type": "string"
-                }
-            }
-        },
-        "api.MembershipTier": {
-            "type": "object",
-            "properties": {
-                "base_point": {
-                    "type": "integer"
-                },
-                "discount": {
-                    "description": "Can be string or number from Directus",
-                    "type": "number"
-                },
-                "early_buy_time": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
                 },
                 "tier": {
                     "type": "string"
@@ -1306,88 +1379,11 @@ const docTemplate = `{
                 }
             }
         },
-        "api.Seat": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "string"
-                },
-                "seat_number": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "api.SeatZone": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "seats": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/api.Seat"
-                    }
-                },
-                "total_seats": {
-                    "type": "integer"
-                }
-            }
-        },
         "api.SuccessMessage": {
             "type": "object",
             "properties": {
                 "message": {
                     "type": "string"
-                }
-            }
-        },
-        "api.Ticket": {
-            "type": "object",
-            "properties": {
-                "base_price": {
-                    "type": "integer"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "rank": {
-                    "type": "string"
-                },
-                "ticket_selling_schedules": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/api.TicketSellingSchedule"
-                    }
-                }
-            }
-        },
-        "api.TicketSellingSchedule": {
-            "type": "object",
-            "properties": {
-                "available": {
-                    "type": "integer"
-                },
-                "end_selling_time": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "start_selling_time": {
-                    "type": "string"
-                },
-                "total": {
-                    "type": "integer"
                 }
             }
         },
@@ -1408,6 +1404,409 @@ const docTemplate = `{
                 },
                 "password": {
                     "type": "string"
+                }
+            }
+        },
+        "db.Booking": {
+            "type": "object",
+            "properties": {
+                "booking_items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/db.BookingItem"
+                    }
+                },
+                "customer_id": {
+                    "$ref": "#/definitions/db.User"
+                },
+                "event_id": {
+                    "$ref": "#/definitions/db.Event"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "payments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/db.Payment"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "db.BookingItem": {
+            "type": "object",
+            "properties": {
+                "booking_id": {
+                    "$ref": "#/definitions/db.Booking"
+                },
+                "event_schedule_id": {
+                    "$ref": "#/definitions/db.EventSchedule"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "integer"
+                },
+                "qr": {
+                    "type": "string"
+                },
+                "seat_id": {
+                    "$ref": "#/definitions/db.Seat"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "ticket_id": {
+                    "$ref": "#/definitions/db.Ticket"
+                }
+            }
+        },
+        "db.Category": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "db.Event": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "bookings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/db.Booking"
+                    }
+                },
+                "category_id": {
+                    "$ref": "#/definitions/db.Category"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "country": {
+                    "type": "string"
+                },
+                "creator_id": {
+                    "$ref": "#/definitions/db.User"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "event_schedules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/db.EventSchedule"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "preview_image": {
+                    "type": "string"
+                },
+                "seat_zone": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/db.SeatZone"
+                    }
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "tickets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/db.Ticket"
+                    }
+                }
+            }
+        },
+        "db.EventSchedule": {
+            "type": "object",
+            "properties": {
+                "end_checkin_time": {
+                    "type": "string"
+                },
+                "end_time": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "start_checkin_time": {
+                    "type": "string"
+                },
+                "start_time": {
+                    "type": "string"
+                }
+            }
+        },
+        "db.Membership": {
+            "type": "object",
+            "properties": {
+                "base_point": {
+                    "type": "integer"
+                },
+                "discount": {
+                    "description": "Directus will return a string even if they are set as decimal",
+                    "type": "string"
+                },
+                "early_buy_time": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "tier": {
+                    "type": "string"
+                }
+            }
+        },
+        "db.Payment": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "booking_id": {
+                    "$ref": "#/definitions/db.Booking"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "payment_gateway": {
+                    "type": "string"
+                },
+                "payment_method": {
+                    "type": "string"
+                },
+                "refunds": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/db.Refund"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "transaction_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "db.Refund": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "payment_id": {
+                    "$ref": "#/definitions/db.Payment"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "db.Role": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "db.Seat": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "reserved_by": {
+                    "$ref": "#/definitions/db.User"
+                },
+                "seat_number": {
+                    "type": "string"
+                },
+                "seat_zone_id": {
+                    "$ref": "#/definitions/db.SeatZone"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "db.SeatZone": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "event_id": {
+                    "$ref": "#/definitions/db.Event"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "seats": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/db.Seat"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "tickets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/db.Ticket"
+                    }
+                },
+                "total_seats": {
+                    "type": "integer"
+                }
+            }
+        },
+        "db.Ticket": {
+            "type": "object",
+            "properties": {
+                "base_price": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "event_id": {
+                    "$ref": "#/definitions/db.Event"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "rank": {
+                    "type": "string"
+                },
+                "seat_zone_id": {
+                    "$ref": "#/definitions/db.SeatZone"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "db.User": {
+            "type": "object",
+            "properties": {
+                "avatar": {
+                    "type": "string"
+                },
+                "bookings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/db.Booking"
+                    }
+                },
+                "email": {
+                    "type": "string"
+                },
+                "first_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_name": {
+                    "type": "string"
+                },
+                "location": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/db.Role"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "user_membership_logs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/db.UserMembershipLog"
+                    }
+                },
+                "user_telegrams": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/db.UserTelegram"
+                    }
+                }
+            }
+        },
+        "db.UserMembershipLog": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "points_delta": {
+                    "type": "integer"
+                },
+                "resulting_points": {
+                    "type": "integer"
+                }
+            }
+        },
+        "db.UserTelegram": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "telegram_chat_id": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "$ref": "#/definitions/db.User"
                 }
             }
         }

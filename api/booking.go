@@ -6,42 +6,11 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"tekticket/db"
 	"tekticket/util"
 
 	"github.com/gin-gonic/gin"
 )
-
-type BookingEventInfo struct {
-	ID           string          `json:"id"`
-	Name         string          `json:"name"`
-	Address      string          `json:"address"`
-	City         string          `json:"city"`
-	Country      string          `json:"country"`
-	PreviewImage string          `json:"preview_image"`
-	Category     Category        `json:"category"`
-	Schedules    []EventSchedule `json:"event_schedules"`
-}
-
-type BookingHistory struct {
-	ID        string           `json:"id"`
-	EventInfo BookingEventInfo `json:"event"`
-}
-
-type directusBookingEventInfo struct {
-	ID           string          `json:"id"`
-	Name         string          `json:"name"`
-	Address      string          `json:"address"`
-	City         string          `json:"city"`
-	Country      string          `json:"country"`
-	PreviewImage string          `json:"preview_image"`
-	Category     Category        `json:"category_id"`
-	Schedules    []EventSchedule `json:"event_schedules"`
-}
-
-type directusBookingHistory struct {
-	ID        string                   `json:"id"`
-	EventInfo directusBookingEventInfo `json:"event_id"`
-}
 
 // ListBookingHistory godoc
 // @Summary      Get user's booking history
@@ -52,7 +21,7 @@ type directusBookingHistory struct {
 // @Param        limit          query     int     false  "Maximum number of records to return (default: 50)"
 // @Param        offset         query     int     false  "Number of records to skip before returning results (default: 0)"
 // @Param        sort           query     string  false  "Sort order, e.g. -date_created (default)"
-// @Success      200  {array}   BookingHistory    "List of completed bookings retrieved successfully"
+// @Success      200  {array}   []db.Booking    "List of completed bookings retrieved successfully"
 // @Failure      400  {object}  ErrorResponse     "Invalid token or parameters"
 // @Failure      401  {object}  ErrorResponse     "Unauthorized access"
 // @Failure      500  {object}  ErrorResponse     "Internal server error or failed to communicate with Directus"
@@ -115,63 +84,22 @@ func (server *Server) ListBookingHistory(ctx *gin.Context) {
 	directusURL := fmt.Sprintf("%s/items/bookings?%s", server.config.DirectusAddr, queryParams.Encode())
 
 	// Make request to Directus
-	var directusResult []directusBookingHistory
-	statusCode, err := util.MakeRequest("GET", directusURL, nil, token, &directusResult)
+	var results []db.Booking
+	status, err := db.MakeRequest("GET", directusURL, nil, token, &results)
 	if err != nil {
 		util.LOGGER.Error("GET /api/bookings/:id: failed to get booking history from Directus", "error", err)
-		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
+		ctx.JSON(status, ErrorResponse{Message: err.Error()})
 		return
 	}
 
-	// Build result
-	history := make([]BookingHistory, len(directusResult))
-	for i, result := range directusResult {
-		history[i] = BookingHistory{
-			ID: result.ID,
-			EventInfo: BookingEventInfo{
-				ID:           result.EventInfo.ID,
-				Name:         result.EventInfo.Name,
-				Address:      result.EventInfo.Address,
-				City:         result.EventInfo.City,
-				Country:      result.EventInfo.Country,
-				PreviewImage: util.CreateImageLink(result.EventInfo.PreviewImage),
-				Category:     result.EventInfo.Category,
-				Schedules:    result.EventInfo.Schedules,
-			},
+	// Remap preview_image of event
+	for _, result := range results {
+		if result.Event.PreviewImage != "" {
+			result.Event.PreviewImage = util.CreateImageLink(result.Event.PreviewImage)
 		}
 	}
 
-	ctx.JSON(http.StatusOK, history)
-}
-
-type BookingTicket struct {
-	ID    string `json:"id"`
-	Price int    `json:"price"`
-	QR    string `json:"qr"`
-	Seat  Seat   `json:"seat"`
-}
-
-type BookingDetail struct {
-	ID          string           `json:"id"`
-	BookingDate string           `json:"booking_date"`
-	EventInfo   BookingEventInfo `json:"event"`
-	Tickets     []BookingTicket  `json:"tickets"`
-	TotalPrice  int              `json:"price "`
-}
-
-type directusBookingTicket struct {
-	ID    string `json:"id"`
-	Price int    `json:"price"`
-	QR    string `json:"qr"`
-	Seat  Seat   `json:"seat_id"`
-}
-
-type directusBookingDetail struct {
-	ID          string                   `json:"id"`
-	BookingDate string                   `json:"date_created"`
-	EventInfo   directusBookingEventInfo `json:"event_id"`
-	Tickets     []directusBookingTicket  `json:"booking_items"`
-	TotalPrice  int                      `json:"price "`
+	ctx.JSON(http.StatusOK, results)
 }
 
 // GetBooking godoc
@@ -181,7 +109,7 @@ type directusBookingDetail struct {
 // @Accept       json
 // @Produce      json
 // @Param        id             path      string  true   "Booking ID"
-// @Success      200  {object}  BookingDetail     "Booking detail retrieved successfully"
+// @Success      200  {object}  db.Booking     "Booking detail retrieved successfully"
 // @Failure      400  {object}  ErrorResponse     "Invalid request parameters"
 // @Failure      401  {object}  ErrorResponse     "Unauthorized access"
 // @Failure      404  {object}  ErrorResponse     "Booking not found"
@@ -214,41 +142,150 @@ func (server *Server) GetBooking(ctx *gin.Context) {
 
 	// Make request to Directus
 	url := fmt.Sprintf("%s/items/bookings/%s?%s", server.config.DirectusAddr, id, queryParams.Encode())
-	var directusResult directusBookingDetail
-	statusCode, err := util.MakeRequest("GET", url, nil, token, &directusResult)
+	var result db.Booking
+	status, err := db.MakeRequest("GET", url, nil, token, &result)
 	if err != nil {
 		util.LOGGER.Error("GET /api/bookings/:id: failed to get booking detail from Directus", "error", err, "id", id)
-		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
+		ctx.JSON(status, ErrorResponse{Message: err.Error()})
 		return
 	}
 
-	// Build result object
-	detail := BookingDetail{
-		ID:          directusResult.ID,
-		BookingDate: directusResult.BookingDate,
-		EventInfo: BookingEventInfo{
-			ID:           directusResult.EventInfo.ID,
-			Name:         directusResult.EventInfo.Name,
-			Address:      directusResult.EventInfo.Address,
-			City:         directusResult.EventInfo.City,
-			Country:      directusResult.EventInfo.Country,
-			PreviewImage: util.CreateImageLink(directusResult.EventInfo.PreviewImage),
-			Category:     directusResult.EventInfo.Category,
-			Schedules:    directusResult.EventInfo.Schedules,
-		},
-		Tickets:    make([]BookingTicket, len(directusResult.Tickets)),
-		TotalPrice: 0,
+	// Remap image for event and tickets' QRs
+	if result.Event.PreviewImage != "" {
+		result.Event.PreviewImage = util.CreateImageLink(result.Event.PreviewImage)
 	}
 
-	for i, ticket := range directusResult.Tickets {
-		detail.Tickets[i] = BookingTicket{
-			ID:    ticket.ID,
-			Price: ticket.Price,
-			QR:    util.CreateImageLink(ticket.QR),
-			Seat:  ticket.Seat,
+	for i, ticket := range result.BookingItems {
+		if ticket.QR != "" {
+			result.BookingItems[i].QR = util.CreateImageLink(ticket.QR)
+
 		}
-		detail.TotalPrice += ticket.Price
 	}
 
-	ctx.JSON(http.StatusOK, detail)
+	ctx.JSON(http.StatusOK, result)
+}
+
+type BookingItemCreate struct {
+	TicketID        string `json:"ticket_id" binding:"required"`
+	EventScheduleID string `json:"event_schedule_id" binding:"required"`
+	SeatID          string `json:"seat_id" binding:"required"`
+}
+
+type CreateBookingRequest struct {
+	EventID string              `json:"event_id" binding:"required"`
+	Items   []BookingItemCreate `json:"items" binding:"required,min=1,dive"`
+}
+
+type CreateBookingResponse struct {
+	ID             string           `json:"id"`
+	Status         string           `json:"status"`
+	Event          db.Event         `json:"event"`
+	Customer       db.User          `json:"customer"`
+	Tickets        []db.BookingItem `json:"tickets"`
+	TotalPricePaid int              `json:"total_price_paid"`
+	FeeCharged     int              `json:"fee_charged"`
+}
+
+// CreateBooking godoc
+// @Summary      Create a new booking
+// @Description  Creates a new booking for an event, including its associated ticket and seat items.
+// @Tags         Bookings
+// @Accept       json
+// @Produce      json
+// @Param        request        body    CreateBookingRequest   true   "Booking creation payload"
+// @Success      200  {object}  CreateBookingResponse                  "Booking created successfully"
+// @Failure      400  {object}  ErrorResponse                   "Invalid request body"
+// @Failure      401  {object}  ErrorResponse                   "Unauthorized access"
+// @Failure      500  {object}  ErrorResponse                   "Internal server error or failed to communicate with Directus"
+// @Security BearerAuth
+// @Router       /api/bookings [post]
+func (server *Server) CreateBooking(ctx *gin.Context) {
+	// Get access token and extract user
+	token := server.GetToken(ctx)
+	if token == "" {
+		ctx.JSON(http.StatusUnauthorized, ErrorResponse{Message: "Unauthorized access"})
+		return
+	}
+
+	// Extract user ID from token
+	userID, err := util.ExtractIDFromToken(token)
+	if err != nil {
+		util.LOGGER.Error("POST /api/bookings: failed to get userID from access token", "error", err)
+		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Invalid token"})
+		return
+	}
+
+	// Parse request
+	var req CreateBookingRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid request body"})
+		return
+	}
+
+	// Create booking with all items
+	payload := map[string]any{
+		"customer_id": userID,
+		"event_id":    req.EventID,
+		"status":      "pending",
+	}
+	items := make([]map[string]any, 0)
+	for _, item := range req.Items {
+		items = append(items, map[string]any{
+			"ticket_id":         item.TicketID,
+			"seat_id":           item.SeatID,
+			"event_schedule_id": item.EventScheduleID,
+		})
+	}
+	payload["booking_items"] = items
+	fields := []string{
+		"id", "date_created", "status",
+		"customer_id.id", "customer_id.first_name", "customer_id.last_name", "customer_id.email",
+		"event_id.id", "event_id.name", "event_id.address", "event_id.city", "event_id.country", "event_id.preview_image",
+		"event_id.event_schedules.id", "event_id.event_schedules.start_time", "event_id.event_schedules.end_time",
+		"event_id.event_schedules.start_checkin_time", "event_id.event_schedules.end_checkin_time",
+		"event_id.category_id.id", "event_id.category_id.name", "event_id.category_id.description",
+		"booking_items.id", "booking_items.price",
+		"booking_items.seat_id.id", "booking_items.seat_id.seat_number",
+	}
+	url := fmt.Sprintf("%s/items/bookings?fields=%s", server.config.DirectusAddr, strings.Join(fields, ","))
+	var result db.Booking
+	statusCode, err := db.MakeRequest("POST", url, payload, token, &result)
+	if err != nil {
+		util.LOGGER.Error("POST /api/bookings: failed to create booking", "error", err)
+		ctx.JSON(statusCode, ErrorResponse{err.Error()})
+		return
+	}
+
+	// Remap event's preview image
+	if result.Event.PreviewImage != "" {
+		result.Event.PreviewImage = util.CreateImageLink(result.Event.PreviewImage)
+	}
+
+	booking := CreateBookingResponse{
+		ID:       result.ID,
+		Status:   result.Status,
+		Event:    *result.Event,
+		Customer: *result.Customer,
+		Tickets:  result.BookingItems,
+	}
+
+	// Calculate total price paid: sum of all booking_item.price
+	for _, item := range result.BookingItems {
+		booking.TotalPricePaid += item.Price
+	}
+	util.LOGGER.Info("POST /api/payments", "id", booking.ID, "before charged", booking.TotalPricePaid)
+
+	// Applied fee charged
+	feePercent, err := strconv.ParseFloat(server.config.PaymentFeePercent, 64)
+	if err != nil {
+		util.LOGGER.Error("POST /api/payments: failed to parse payment fee charged", "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		return
+	}
+
+	booking.FeeCharged = int(feePercent * float64(booking.TotalPricePaid) / 100)
+	booking.TotalPricePaid += booking.FeeCharged
+	util.LOGGER.Info("POST /api/payments", "id", booking.ID, "after charged", booking.TotalPricePaid)
+
+	ctx.JSON(http.StatusOK, booking)
 }
