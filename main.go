@@ -50,6 +50,7 @@ func main() {
 		util.LOGGER.Error("failed to initialize uploader service", "error", err)
 		os.Exit(1)
 	}
+	uploadService := uploader.NewUploader(cld, config)
 	mailService := notify.NewEmailService(config.Email, config.AppPassword)
 	bot, err := bot.NewChatbot(config.TelegramBotToken, fmt.Sprintf("%s/api/webhook/telegram", config.ServerDomain))
 	if err != nil {
@@ -63,11 +64,10 @@ func main() {
 	payment.InitStripe(config.StripeSecretKey)
 
 	// Start the background server in separate goroutine (since it's will block the main thread)
-
-	go StartBackgroundProcessor(asynq.RedisClientOpt{Addr: config.RedisAddr}, queries, mailService, config)
+	go StartBackgroundProcessor(asynq.RedisClientOpt{Addr: config.RedisAddr}, queries, mailService, uploadService, config)
 
 	// Start server
-	server := api.NewServer(queries, distributor, mailService, cld, bot, config)
+	server := api.NewServer(queries, distributor, mailService, uploadService, bot, config)
 	if err := server.Start(); err != nil {
 		util.LOGGER.Error("Failed to start server", "error", err)
 		os.Exit(1)
@@ -78,10 +78,11 @@ func StartBackgroundProcessor(
 	redisOpts asynq.RedisClientOpt,
 	queries *db.Queries,
 	mailService notify.MailService,
+	uploadService *uploader.Uploader,
 	config *util.Config,
 ) error {
 	// Create the processor
-	processor := worker.NewRedisTaskProcessor(redisOpts, queries, mailService, config)
+	processor := worker.NewRedisTaskProcessor(redisOpts, queries, mailService, uploadService, config)
 
 	// Start process tasks
 	return processor.Start()

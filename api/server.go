@@ -14,7 +14,6 @@ import (
 	"tekticket/util"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -31,7 +30,7 @@ type Server struct {
 	// Dependencies
 	distributor   worker.TaskDistributor
 	mailService   notify.MailService
-	uploadService *uploader.CloudinaryService
+	uploadService *uploader.Uploader
 	bot           *bot.Chatbot
 	config        *util.Config
 }
@@ -41,7 +40,7 @@ func NewServer(
 	queries *db.Queries,
 	distributor worker.TaskDistributor,
 	mailService notify.MailService,
-	uploadService *uploader.CloudinaryService,
+	uploadService *uploader.Uploader,
 	bot *bot.Chatbot,
 	config *util.Config,
 ) *Server {
@@ -185,41 +184,4 @@ type SuccessMessage struct {
 // Get the Bearer token
 func (server *Server) GetToken(ctx *gin.Context) string {
 	return strings.TrimPrefix(ctx.Request.Header.Get("Authorization"), "Bearer ")
-}
-
-type ImageResponse struct {
-	ID string `json:"id"`
-}
-
-// Upload image to both Cloudinary and Directus
-func (server *Server) UploadImage(ctx *gin.Context, image string) (string, error) {
-	path := ctx.FullPath()
-	method := ctx.Request.Method
-
-	// Upload the image into cloud service
-	cloudResp, err := server.uploadService.UploadImage(ctx, image, uuid.New().String())
-	if err != nil {
-		util.LOGGER.Error(fmt.Sprintf("%s %s: failed to upload image into the cloud", method, path), "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
-		return "", err
-	}
-
-	// Upload the image into Directus
-	url := server.config.DirectusAddr + "/files/import"
-	var imageResp ImageResponse
-	status, err := db.MakeRequest(
-		"POST",
-		url,
-		map[string]any{"url": cloudResp.SecureURL},
-		server.config.DirectusStaticToken,
-		&imageResp,
-	)
-
-	if err != nil {
-		util.LOGGER.Error(fmt.Sprintf("%s %s: failed to upload image into Directus", method, path), "error", err)
-		ctx.JSON(status, ErrorResponse{err.Error()})
-		return "", err
-	}
-
-	return imageResp.ID, nil
 }

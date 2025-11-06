@@ -6,6 +6,7 @@ import (
 	"strings"
 	"tekticket/db"
 	"tekticket/service/notify"
+	"tekticket/service/uploader"
 	"tekticket/util"
 	"testing"
 
@@ -36,10 +37,26 @@ func TestMain(m *testing.M) {
 	}
 
 	mailService := notify.NewEmailService(os.Getenv("EMAIL"), os.Getenv("APP_PASSWORD"))
-
-	config := &util.Config{
-		ResetPasswordURL: "http://localhost:3000", // Just some dump value, we only care about the token in this test
+	cld, err := uploader.NewCld(os.Getenv("CLOUDINARY_NAME"), os.Getenv("CLOUDINARY_APIKEY"), os.Getenv("CLOUDINARY_APISECRET"))
+	if err != nil {
+		util.LOGGER.Error("failed to create cloudinary service", "error", err)
+		os.Exit(1)
 	}
-	processor = NewRedisTaskProcessor(asynq.RedisClientOpt{Addr: os.Getenv("REDIS_ADDR")}, queries, mailService, config)
+	util.LOGGER.Info(
+		"env",
+		"directus addr", os.Getenv("DIRECTUS_ADDR"),
+		"static token", os.Getenv("DIRECTUS_STATIC_TOKEN"),
+		"secret key", os.Getenv("SECRET_KEY"),
+	)
+	config := &util.Config{
+		ResetPasswordURL:    "http://localhost:3000", // Just some dump value, we only care about the token in this test
+		DirectusAddr:        os.Getenv("DIRECTUS_ADDR"),
+		DirectusStaticToken: os.Getenv("DIRECTUS_STATIC_TOKEN"),
+		SecretKey:           os.Getenv("SECRET_KEY"),
+	}
+
+	uploadService := uploader.NewUploader(cld, config)
+
+	processor = NewRedisTaskProcessor(asynq.RedisClientOpt{Addr: os.Getenv("REDIS_ADDR")}, queries, mailService, uploadService, config)
 	os.Exit(m.Run())
 }

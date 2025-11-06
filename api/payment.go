@@ -6,9 +6,11 @@ import (
 	"strings"
 	"tekticket/db"
 	"tekticket/service/payment"
+	"tekticket/service/worker"
 	"tekticket/util"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hibiken/asynq"
 	"github.com/stripe/stripe-go/v82"
 )
 
@@ -133,13 +135,69 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 	util.LOGGER.Info("POST /api/payments/:id/confirm: confirm status", "status", intent.Status)
 
 	// Update payment with Stripe's status returned
-	url := fmt.Sprintf("%s/items/payments/%s", server.config.DirectusAddr, ctx.Param("id"))
+	fields := []string{
+		"id", "amount", "payment_gateway", "payment_method", "status", "booking.booking_items.id",
+	}
+	url := fmt.Sprintf("%s/items/payments/%s?fields=%s", server.config.DirectusAddr, ctx.Param("id"), strings.Join(fields, ","))
 	var paymentInfo db.Payment
-	status, err := db.MakeRequest("PATCH", url, map[string]any{"status": intent.Status}, token, &paymentInfo)
+	status, err := db.MakeRequest(
+		"PATCH",
+		url,
+		map[string]any{
+			"payment_method": intent.PaymentMethod.Type,
+			"status":         intent.Status,
+		},
+		token,
+		&paymentInfo,
+	)
 	if err != nil {
 		util.LOGGER.Error("POST /api/payments/:id/confirm: failed to update payment record in database", "error", err)
 		ctx.JSON(status, ErrorResponse{err.Error()})
 		return
+	}
+
+	// Start background task: publish QR tickets
+	if paymentInfo.Booking != nil {
+		for _, item := range paymentInfo.Booking.BookingItems {
+			err := server.distributor.DistributeTask(ctx, worker.PublishQRTicket, worker.PublishQRTicketPayload{
+				BookingItemID: item.ID,
+				CheckInURL:    server.config.CheckinURL,
+			}, asynq.MaxRetry(5))
+
+			if err != nil {
+				util.LOGGER.Error(
+					"POST /api/payment/:id/confirm: failed to distribute task",
+					"task", worker.PublishQRTicket,
+					"booking_item_id", item.ID,
+					"error", err,
+				)
+
+				// If failed to publish ticket, we'll refund money back to user
+				refund, err := payment.CreateRefund(intent.ID, payment.RequestedByCustomer, intent.Amount)
+				if err != nil {
+					util.LOGGER.Error(
+						"POST /api/payments/:id/confirm: failed to refund to customer after failing publishing tickets",
+						"error", err,
+					)
+					ctx.JSON(http.StatusInternalServerError, ErrorResponse{
+						"Payment success, but failed to publish tickets! We try to refund but failed again. Please contact the admin",
+					})
+					return
+				}
+
+				// Check if refund success
+				if refund.Status != "succeeded" {
+					util.LOGGER.Error("POST /api/payments/:id/confirm: refund failed", "status", refund.Status)
+					ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Refund failed: " + string(refund.Status)})
+					return
+				}
+
+				ctx.JSON(http.StatusInternalServerError, ErrorResponse{
+					"Payment success, but failed to publish ticket. We've refuned your previous payment",
+				})
+				return
+			}
+		}
 	}
 
 	ctx.JSON(http.StatusOK, paymentInfo)

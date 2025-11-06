@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"tekticket/db"
 	"tekticket/service/notify"
+	"tekticket/service/uploader"
 	"tekticket/util"
 
 	"github.com/hibiken/asynq"
@@ -24,7 +25,8 @@ type RedisTaskProcessor struct {
 	queries *db.Queries
 
 	// Dependencies
-	mailService notify.MailService
+	mailService   notify.MailService
+	uploadService *uploader.Uploader
 
 	// Config
 	config *util.Config
@@ -35,13 +37,15 @@ func NewRedisTaskProcessor(
 	redisOpts asynq.RedisClientOpt,
 	queries *db.Queries,
 	mailService notify.MailService,
+	uploadService *uploader.Uploader,
 	config *util.Config,
 ) TaskProcessor {
 	return &RedisTaskProcessor{
-		server:      asynq.NewServer(redisOpts, asynq.Config{}),
-		queries:     queries,
-		mailService: mailService,
-		config:      config,
+		server:        asynq.NewServer(redisOpts, asynq.Config{}),
+		queries:       queries,
+		mailService:   mailService,
+		uploadService: uploadService,
+		config:        config,
 	}
 }
 

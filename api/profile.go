@@ -99,8 +99,10 @@ func (server *Server) UpdateProfile(ctx *gin.Context) {
 	}
 
 	if req.Avatar = strings.TrimSpace(req.Avatar); req.Avatar != "" {
-		avatarID, err := server.UploadImage(ctx, req.Avatar)
+		status, avatarID, err := server.uploadService.UploadImage(ctx, req.Avatar)
 		if err != nil {
+			util.LOGGER.Error("PUT /api/profile: failed to upload new avatar image", "status", status, "error", err)
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"failed to handle avatar image"})
 			return
 		}
 
