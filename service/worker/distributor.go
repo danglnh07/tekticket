@@ -45,7 +45,7 @@ func (distributor *RedisTaskDistributor) DistributeTask(ctx context.Context, nam
 	}
 
 	// Log task info
-	util.LOGGER.Info("Task info", "task_name", name, "queue", info.Queue, "max_retry", info.MaxRetry)
+	util.LOGGER.Info("Task info", "task_name", name, "queue", info.Queue, "max_retry", info.MaxRetry, "queue", info.Queue)
 
 	return nil
 }

@@ -140,6 +140,47 @@ definitions:
       tier:
         type: string
     type: object
+  api.MembershipTier:
+    properties:
+      base_point:
+        type: integer
+      discount:
+        description: Can be string or number from Directus
+        type: number
+      early_buy_time:
+        type: integer
+      id:
+        type: string
+      status:
+        type: string
+      tier:
+        type: string
+    type: object
+  api.NotificationRequest:
+    properties:
+      body:
+        description: Notification body
+        type: string
+      dest_email:
+        description: The destination email, if allow sending email notification
+        type: string
+      dest_inapp:
+        description: The channel to send the in app notification using Pub/Sub model
+        type: string
+      dest_telegram:
+        description: The chat ID of telegram, if allow telegram notification
+        type: integer
+      name:
+        description: Event name (in can be the notification category)
+        type: string
+      queue:
+        description: 'The impact of this notification. It can be: low, default or
+          critical'
+        type: string
+      title:
+        description: Notification title
+        type: string
+    type: object
   api.ProfileResponse:
     properties:
       avatar:
@@ -1047,85 +1088,37 @@ paths:
       summary: Get customer membership info
       tags:
       - Memberships
-  /api/payments:
+  /api/notifications/webhook:
     post:
       consumes:
       - application/json
-      description: Creates a Stripe payment intent and records the payment information
-        in the database for a booking.
+      description: Receives webhook payloads from Directus flows and dispatches notifications
+        to various destinations (in-app, Telegram, email) using background workers.
       parameters:
-      - description: Payment creation payload
+      - description: Notification webhook payload
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/api.CreatePaymentRequest'
+          $ref: '#/definitions/api.NotificationRequest'
       produces:
       - application/json
       responses:
         "200":
-          description: Payment created successfully
+          description: Notification dispatched successfully
           schema:
-            $ref: '#/definitions/api.CreatePaymentResponse'
+            $ref: '#/definitions/api.SuccessMessage'
         "400":
-          description: Invalid request body
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-        "401":
-          description: Unauthorized access
+          description: Invalid request body or missing required destinations
           schema:
             $ref: '#/definitions/api.ErrorResponse'
         "500":
-          description: Internal server error or failed to communicate with Stripe/Directus
+          description: Internal server error or failed to distribute background task
           schema:
             $ref: '#/definitions/api.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Create a new payment
+      summary: Handle Directus notification webhook
       tags:
-      - Payments
-  /api/payments/{id}/confirm:
-    post:
-      consumes:
-      - application/json
-      description: Confirms a Stripe payment intent and updates the payment record
-        in the database with the confirmation status.
-      parameters:
-      - description: Payment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Payment confirmation payload
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/api.ConfirmPaymentRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Payment confirmed successfully
-          schema:
-            $ref: '#/definitions/db.Payment'
-        "400":
-          description: Invalid request body
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-        "401":
-          description: Unauthorized access
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-        "500":
-          description: Internal server error or failed to confirm payment in Stripe/Directus
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Confirm an existing payment
-      tags:
-      - Payments
+      - Notifications
   /api/profile:
     get:
       consumes:

@@ -2,9 +2,11 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"tekticket/db"
+	"tekticket/service/bot"
 	"tekticket/service/notify"
 	"tekticket/service/uploader"
 	"tekticket/util"
@@ -37,6 +39,13 @@ func TestMain(m *testing.M) {
 	}
 
 	mailService := notify.NewEmailService(os.Getenv("EMAIL"), os.Getenv("APP_PASSWORD"))
+	ablyService, err := notify.NewAblyService(os.Getenv("ABLY_API_KEY"))
+	if err != nil {
+		util.LOGGER.Error("failed to create ably service for test", "error", err)
+		os.Exit(1)
+	}
+	bot, err := bot.NewChatbot(os.Getenv("TELEGRAM_BOT_TOKEN"), fmt.Sprintf("%s/api/webhook/telegram", os.Getenv("SERVER_DOMAIN")))
+
 	cld, err := uploader.NewCld(os.Getenv("CLOUDINARY_NAME"), os.Getenv("CLOUDINARY_APIKEY"), os.Getenv("CLOUDINARY_APISECRET"))
 	if err != nil {
 		util.LOGGER.Error("failed to create cloudinary service", "error", err)
@@ -54,6 +63,7 @@ func TestMain(m *testing.M) {
 		DirectusStaticToken: os.Getenv("DIRECTUS_STATIC_TOKEN"),
 		SecretKey:           os.Getenv("SECRET_KEY"),
 	}
+	processor = NewRedisTaskProcessor(asynq.RedisClientOpt{Addr: os.Getenv("REDIS_ADDR")}, queries, mailService, ablyService, bot, config)
 
 	uploadService := uploader.NewUploader(cld, config)
 

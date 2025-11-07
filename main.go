@@ -61,11 +61,33 @@ func main() {
 		util.LOGGER.Error("Failed to setup chatbot", "error", err)
 		os.Exit(1)
 	}
-	payment.InitStripe(config.StripeSecretKey)
+	ablyService, err := notify.NewAblyService(config.AblyApiKey)
+	if err != nil {
+		util.LOGGER.Error("Failed to initialize Ably service", "error", err)
+		os.Exit(1)
+	}
 
+  // Init Stripe
+  payment.InitStripe(config.StripeSecretKey)
+  
 	// Start the background server in separate goroutine (since it's will block the main thread)
-	go StartBackgroundProcessor(asynq.RedisClientOpt{Addr: config.RedisAddr}, queries, mailService, uploadService, config)
+	util.LOGGER.Info("Max workers", "val", config.MaxWorkers)
+	for range config.MaxWorkers { // This should be configure, but let's just use a constant for now
+		go func() {
+			if err := StartBackgroundProcessor(
+				asynq.RedisClientOpt{Addr: config.RedisAddr},
+				queries,
+				mailService,
+				ablyService,
+				bot,
+				config,
+			); err != nil {
+				util.LOGGER.Error("task failed", "error", err)
+			}
+		}()
 
+	}
+	
 	// Start server
 	server := api.NewServer(queries, distributor, mailService, uploadService, bot, config)
 	if err := server.Start(); err != nil {
@@ -78,11 +100,13 @@ func StartBackgroundProcessor(
 	redisOpts asynq.RedisClientOpt,
 	queries *db.Queries,
 	mailService notify.MailService,
-	uploadService *uploader.Uploader,
+  uploadService *uploader.Upload,
+	ablyService *notify.AblyService,
+	bot *bot.Chatbot,
 	config *util.Config,
 ) error {
 	// Create the processor
-	processor := worker.NewRedisTaskProcessor(redisOpts, queries, mailService, uploadService, config)
+	processor := worker.NewRedisTaskProcessor(redisOpts, queries, mailService, uploadService, ablyService, bot, config)
 
 	// Start process tasks
 	return processor.Start()
