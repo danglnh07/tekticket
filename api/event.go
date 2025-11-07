@@ -57,8 +57,8 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 		"category_id.id", "category_id.name", "category_id.description", "category_id.status",
 	}
 	queryParams.Add("fields", strings.Join(fields, ","))
-	queryParams.Add("deep[seat_zones][filter][status][_icontains]", "published")
-	queryParams.Add("deep[tickets][filter][status][_icontains]", "published")
+	queryParams.Add("deep[seat_zones][_filter][status][_icontains]", "published")
+	queryParams.Add("deep[tickets][_filter][status][_icontains]", "published")
 	queryParams.Add("filter[category_id][status][_icontains]", "published")
 	queryParams.Add("filter[status][_icontains]", "published")
 
