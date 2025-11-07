@@ -140,22 +140,6 @@ definitions:
       tier:
         type: string
     type: object
-  api.MembershipTier:
-    properties:
-      base_point:
-        type: integer
-      discount:
-        description: Can be string or number from Directus
-        type: number
-      early_buy_time:
-        type: integer
-      id:
-        type: string
-      status:
-        type: string
-      tier:
-        type: string
-    type: object
   api.NotificationRequest:
     properties:
       body:
@@ -1119,6 +1103,105 @@ paths:
       summary: Handle Directus notification webhook
       tags:
       - Notifications
+  /api/payments:
+    post:
+      consumes:
+      - application/json
+      description: Creates a Stripe payment intent and records the payment information
+        in the database for a booking.
+      parameters:
+      - description: Payment creation payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreatePaymentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Payment created successfully
+          schema:
+            $ref: '#/definitions/api.CreatePaymentResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized access
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to communicate with Stripe/Directus
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a new payment
+      tags:
+      - Payments
+  /api/payments/{id}/confirm:
+    post:
+      consumes:
+      - application/json
+      description: Confirms a Stripe payment intent and updates the payment record
+        in the database with the confirmation status.
+      parameters:
+      - description: Payment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Payment confirmation payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.ConfirmPaymentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Payment confirmed successfully
+          schema:
+            $ref: '#/definitions/db.Payment'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized access
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to confirm payment in Stripe/Directus
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Confirm an existing payment
+      tags:
+      - Payments
+  /api/payments/method:
+    get:
+      consumes:
+      - application/json
+      description: Create payment method for confirm payment in Stripe. This API is
+        solely for internal testing, not to be consumed by
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Payment method ID of mock visa
+          schema:
+            $ref: '#/definitions/api.SuccessMessage'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Create payment method
+      tags:
+      - Payments
   /api/profile:
     get:
       consumes:

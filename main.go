@@ -47,7 +47,7 @@ func main() {
 	distributor := worker.NewRedisTaskDistributor(asynq.RedisClientOpt{Addr: config.RedisAddr})
 	cld, err := uploader.NewCld(config.CloudStorageName, config.CloudStorageKey, config.CloudStorageSecret)
 	if err != nil {
-		util.LOGGER.Error("failed to initialize uploader service", "error", err)
+		util.LOGGER.Error("failed to initialize Cloudinary service", "error", err)
 		os.Exit(1)
 	}
 	uploadService := uploader.NewUploader(cld, config)
@@ -66,10 +66,8 @@ func main() {
 		util.LOGGER.Error("Failed to initialize Ably service", "error", err)
 		os.Exit(1)
 	}
+	payment.InitStripe(config.StripeSecretKey)
 
-  // Init Stripe
-  payment.InitStripe(config.StripeSecretKey)
-  
 	// Start the background server in separate goroutine (since it's will block the main thread)
 	util.LOGGER.Info("Max workers", "val", config.MaxWorkers)
 	for range config.MaxWorkers { // This should be configure, but let's just use a constant for now
@@ -78,6 +76,7 @@ func main() {
 				asynq.RedisClientOpt{Addr: config.RedisAddr},
 				queries,
 				mailService,
+				uploadService,
 				ablyService,
 				bot,
 				config,
@@ -87,7 +86,7 @@ func main() {
 		}()
 
 	}
-	
+
 	// Start server
 	server := api.NewServer(queries, distributor, mailService, uploadService, bot, config)
 	if err := server.Start(); err != nil {
@@ -100,7 +99,7 @@ func StartBackgroundProcessor(
 	redisOpts asynq.RedisClientOpt,
 	queries *db.Queries,
 	mailService notify.MailService,
-  uploadService *uploader.Upload,
+	uploadService *uploader.Uploader,
 	ablyService *notify.AblyService,
 	bot *bot.Chatbot,
 	config *util.Config,

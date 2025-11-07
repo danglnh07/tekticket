@@ -44,7 +44,7 @@ func (server *Server) GetProfile(ctx *gin.Context) {
 
 	// Remap avatar into an usable link
 	if profile.Avatar != "" {
-		profile.Avatar = util.CreateImageLink(profile.Avatar)
+		profile.Avatar = util.CreateImageLink(server.config.ServerDomain, profile.Avatar)
 	}
 
 	ctx.JSON(http.StatusOK, profile)
@@ -119,6 +119,6 @@ func (server *Server) UpdateProfile(ctx *gin.Context) {
 		return
 	}
 
-	profile.Avatar = util.CreateImageLink(profile.Avatar)
+	profile.Avatar = util.CreateImageLink(server.config.ServerDomain, profile.Avatar)
 	ctx.JSON(http.StatusOK, profile)
 }

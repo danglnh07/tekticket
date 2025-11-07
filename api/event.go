@@ -88,7 +88,7 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 
 		// Remap preview_image ID into a useable link
 		if event.PreviewImage != "" {
-			event.PreviewImage = util.CreateImageLink(event.PreviewImage)
+			event.PreviewImage = util.CreateImageLink(server.config.ServerDomain, event.PreviewImage)
 		}
 
 		ctx.JSON(http.StatusOK, event)
@@ -104,7 +104,7 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 
 		// Remap preview_image ID into a useable link
 		if event.PreviewImage != "" {
-			event.PreviewImage = util.CreateImageLink(event.PreviewImage)
+			event.PreviewImage = util.CreateImageLink(server.config.ServerDomain, event.PreviewImage)
 		}
 
 		ctx.JSON(http.StatusOK, event)
@@ -326,7 +326,7 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 
 		// Remap preview_image ID to link
 		if eventInfo.PreviewImage != "" {
-			eventInfo.PreviewImage = util.CreateImageLink(eventInfo.PreviewImage)
+			eventInfo.PreviewImage = util.CreateImageLink(server.config.ServerDomain, eventInfo.PreviewImage)
 		}
 
 		events = append(events, eventInfo)

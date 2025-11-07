@@ -910,8 +910,8 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/profile": {
-            "get": {
+        "/api/payments": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -960,6 +960,35 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal server error or failed to communicate with Stripe/Directus",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/payments/method": {
+            "get": {
+                "description": "Create payment method for confirm payment in Stripe. This API is solely for internal testing, not to be consumed by",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Payments"
+                ],
+                "summary": "Create payment method",
+                "responses": {
+                    "200": {
+                        "description": "Payment method ID of mock visa",
+                        "schema": {
+                            "$ref": "#/definitions/api.SuccessMessage"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -1335,30 +1364,6 @@ const docTemplate = `{
                 },
                 "points": {
                     "type": "integer"
-                },
-                "tier": {
-                    "type": "string"
-                }
-            }
-        },
-        "api.MembershipTier": {
-            "type": "object",
-            "properties": {
-                "base_point": {
-                    "type": "integer"
-                },
-                "discount": {
-                    "description": "Can be string or number from Directus",
-                    "type": "number"
-                },
-                "early_buy_time": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
                 },
                 "tier": {
                     "type": "string"

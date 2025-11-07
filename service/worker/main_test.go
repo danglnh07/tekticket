@@ -63,10 +63,17 @@ func TestMain(m *testing.M) {
 		DirectusStaticToken: os.Getenv("DIRECTUS_STATIC_TOKEN"),
 		SecretKey:           os.Getenv("SECRET_KEY"),
 	}
-	processor = NewRedisTaskProcessor(asynq.RedisClientOpt{Addr: os.Getenv("REDIS_ADDR")}, queries, mailService, ablyService, bot, config)
-
 	uploadService := uploader.NewUploader(cld, config)
 
-	processor = NewRedisTaskProcessor(asynq.RedisClientOpt{Addr: os.Getenv("REDIS_ADDR")}, queries, mailService, uploadService, config)
+	processor = NewRedisTaskProcessor(
+		asynq.RedisClientOpt{Addr: os.Getenv("REDIS_ADDR")},
+		queries,
+		mailService,
+		uploadService,
+		ablyService,
+		bot,
+		config,
+	)
+
 	os.Exit(m.Run())
 }

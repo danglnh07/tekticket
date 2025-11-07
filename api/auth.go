@@ -112,7 +112,7 @@ func (server *Server) Register(ctx *gin.Context) {
 		ID:       result.ID,
 		Email:    result.Email,
 		Username: fmt.Sprintf("%s %s", result.FirstName, result.LastName),
-	}, asynq.MaxRetry(5))
+	}, asynq.Queue(worker.MEDIUM_IMPACT), asynq.MaxRetry(5))
 
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/register: failed to distribute task", "task", worker.SendVerifyEmail, "error", err)
@@ -208,7 +208,7 @@ func (server *Server) SendOTP(ctx *gin.Context) {
 		ID:       id,
 		Email:    result.Email,
 		Username: fmt.Sprintf("%s %s", result.FirstName, result.LastName),
-	}, asynq.MaxRetry(5))
+	}, asynq.Queue(worker.HIGH_IMPACT), asynq.MaxRetry(5))
 
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/resend-otp: failed to distribute task", "task", worker.SendVerifyEmail, "error", err)
@@ -390,7 +390,7 @@ func (server *Server) SendResetPasswordRequest(ctx *gin.Context) {
 	err = server.distributor.DistributeTask(ctx, worker.SendResetPassword, worker.SendResetPasswordPayload{
 		ID:    result[0].ID,
 		Email: email,
-	}, asynq.MaxRetry(5))
+	}, asynq.Queue(worker.MEDIUM_IMPACT), asynq.MaxRetry(5))
 
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/password/request: failed to distribute task", "error", err)
@@ -428,7 +428,12 @@ func (server *Server) ResetPassword(ctx *gin.Context) {
 	}
 
 	// Check if the token is correct
-	token, err := util.Decrypt([]byte(server.config.SecretKey), []byte(util.Decode(req.Token)))
+	decodeToken, err := util.Decode(req.Token)
+	if err != nil {
+		util.LOGGER.Error("POST /api/auth/password/reset: failed to decode token", "error", err)
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Bad request, token invalid"})
+	}
+	token, err := util.Decrypt([]byte(server.config.SecretKey), []byte(decodeToken))
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/password/reset: failed to decrypt token", "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})

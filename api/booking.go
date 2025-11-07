@@ -95,7 +95,7 @@ func (server *Server) ListBookingHistory(ctx *gin.Context) {
 	// Remap preview_image of event
 	for _, result := range results {
 		if result.Event.PreviewImage != "" {
-			result.Event.PreviewImage = util.CreateImageLink(result.Event.PreviewImage)
+			result.Event.PreviewImage = util.CreateImageLink(server.config.ServerDomain, result.Event.PreviewImage)
 		}
 	}
 
@@ -152,12 +152,12 @@ func (server *Server) GetBooking(ctx *gin.Context) {
 
 	// Remap image for event and tickets' QRs
 	if result.Event.PreviewImage != "" {
-		result.Event.PreviewImage = util.CreateImageLink(result.Event.PreviewImage)
+		result.Event.PreviewImage = util.CreateImageLink(server.config.ServerDomain, result.Event.PreviewImage)
 	}
 
 	for i, ticket := range result.BookingItems {
 		if ticket.QR != "" {
-			result.BookingItems[i].QR = util.CreateImageLink(ticket.QR)
+			result.BookingItems[i].QR = util.CreateImageLink(server.config.ServerDomain, ticket.QR)
 
 		}
 	}
@@ -258,7 +258,7 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 
 	// Remap event's preview image
 	if result.Event.PreviewImage != "" {
-		result.Event.PreviewImage = util.CreateImageLink(result.Event.PreviewImage)
+		result.Event.PreviewImage = util.CreateImageLink(server.config.ServerDomain, result.Event.PreviewImage)
 	}
 
 	booking := CreateBookingResponse{

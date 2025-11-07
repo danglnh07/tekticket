@@ -1,7 +1,6 @@
 package util
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	cryprand "crypto/rand"
@@ -11,11 +10,9 @@ import (
 	"io"
 	"log/slog"
 	"math/rand"
-	"net/http"
 	"os"
 	"strings"
 
-	"github.com/gosimple/slug"
 	"github.com/skip2/go-qrcode"
 )
 
@@ -42,84 +39,14 @@ func GenerateQR(content string) ([]byte, error) {
 	return qrcode.Encode(content, qrcode.Medium, 256)
 }
 
-// Generate slug
-func GenerateSlug(content string) string {
-	return slug.Make(content)
-}
-
 // Generate random OTP code (6 digits code)
 func GenerateRandomOTP() string {
 	return fmt.Sprintf("%d", rand.Intn(999999-100000+1)+100000)
 }
 
-// Helper: make request to Directus
-type DirectusResp struct {
-	Data any `json:"data"`
-}
-
-func MakeRequest(method, url string, body map[string]any, token string, result any) (int, error) {
-	var (
-		req *http.Request
-		err error
-	)
-
-	if body != nil {
-		// build body
-		data, err := json.Marshal(body)
-		if err != nil {
-			return http.StatusInternalServerError, err
-		}
-		req, err = http.NewRequest(method, url, bytes.NewBuffer(data))
-		if err != nil {
-			return http.StatusInternalServerError, err
-		}
-	} else {
-		req, err = http.NewRequest(method, url, nil)
-		if err != nil {
-			return http.StatusInternalServerError, err
-		}
-	}
-
-	// Set request header
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	// Make request to Directus API
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return http.StatusInternalServerError, err
-	}
-
-	// Check if status code is success
-	if 200 > resp.StatusCode || resp.StatusCode >= 300 {
-		message, _ := io.ReadAll(resp.Body)
-		return resp.StatusCode, fmt.Errorf("response status not ok: %s", string(message)+" "+resp.Status)
-	}
-
-	// Parse Directus response
-	directusResp := DirectusResp{Data: result}
-	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
-		return http.StatusInternalServerError, err
-	}
-
-	return resp.StatusCode, nil
-}
-
 // Generate the URL of image using its ID
-func CreateImageLink(id string) string {
-	return fmt.Sprintf("http://localhost:8080/images/%s", id)
-}
-
-// NormalizeChoseDate ensures chose_date is in full ISO format.
-// If input is YYYY-MM-DD, it converts to the start of day in UTC (T00:00:00Z).
-func NormalizeChoseDate(d string) string {
-	if d == "" {
-		return ""
-	}
-	if strings.Contains(d, "T") { // already full ISO
-		return d
-	}
-	return d + "T00:00:00Z"
+func CreateImageLink(domain, id string) string {
+	return fmt.Sprintf("%s/images/%s", domain, id)
 }
 
 // Encrypt encrypts plaintext using AES-256 GCM.
@@ -174,12 +101,12 @@ func Encode(str string) string {
 }
 
 // Method to decode a Base64 URL encoded string
-func Decode(str string) string {
+func Decode(str string) (string, error) {
 	data, err := base64.URLEncoding.DecodeString(str)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return string(data)
+	return string(data), nil
 }
 
 // Helper: format HTML warning message for Telegram
@@ -192,7 +119,7 @@ func FormatNotificationHTML(title, body string) string {
 	// Body should already be an HTML template, so we don't do anything to it
 	return fmt.Sprintf("<b>%s</b>\n\n%s", strings.ToUpper(title), body)
 }
-  
+
 // Helper method: get user ID from access token
 func ExtractIDFromToken(token string) (string, error) {
 	// Decode base64 token to get the JWT payload

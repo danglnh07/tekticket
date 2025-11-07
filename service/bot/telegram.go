@@ -229,10 +229,14 @@ func (bot *Chatbot) Setup() error {
 		}
 	}
 
+	description := ""
+	description += "Start using out chatbot and receive any notification, by simply typing /start <YOUR_EMAIL> <YOUR_ROLE>. "
+	description += "If role is not provided, we'll serve you as customer"
+
 	// Set the start command, while keeping other existing commands untouch
 	bot.SetCommands([]Command{{
 		Command:     "/start",
-		Description: "Start using out chatbot and receive any notification, by simply typing /start <YOUR_EMAIL>",
+		Description: description,
 	}}, SCOPE, LANG)
 
 	return nil

@@ -12,14 +12,20 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-var queues = map[string]int{
+var Queues = map[string]int{
 	"low":      1,
 	"default":  3,
 	"critical": 6,
 }
 
+const (
+	LOW_IMPACT    = "low"
+	MEDIUM_IMPACT = "default"
+	HIGH_IMPACT   = "high"
+)
+
 func IsQueueLevelExists(queue string) bool {
-	_, ok := queues[queue]
+	_, ok := Queues[queue]
 	return ok
 }
 
@@ -37,10 +43,9 @@ type RedisTaskProcessor struct {
 	queries *db.Queries
 
 	// Dependencies
-	mailService notify.MailService
-	ablyService *notify.AblyService
-	bot         *bot.Chatbot
 	mailService   notify.MailService
+	ablyService   *notify.AblyService
+	bot           *bot.Chatbot
 	uploadService *uploader.Uploader
 
 	// Config
@@ -52,19 +57,19 @@ func NewRedisTaskProcessor(
 	redisOpts asynq.RedisClientOpt,
 	queries *db.Queries,
 	mailService notify.MailService,
-  uploadService *uploader.Uploader,
+	uploadService *uploader.Uploader,
 	ablyService *notify.AblyService,
 	bot *bot.Chatbot,
 	config *util.Config,
 ) TaskProcessor {
 	return &RedisTaskProcessor{
-		server:      asynq.NewServer(redisOpts, asynq.Config{Queues: queues}),
-		queries:     queries,
-		mailService: mailService,
-    uploadService: uploadService,
-		ablyService: ablyService,
-		bot:         bot,
-		config:      config,
+		server:        asynq.NewServer(redisOpts, asynq.Config{Queues: Queues}),
+		queries:       queries,
+		mailService:   mailService,
+		uploadService: uploadService,
+		ablyService:   ablyService,
+		bot:           bot,
+		config:        config,
 	}
 }
 
@@ -162,8 +167,8 @@ func (processor *RedisTaskProcessor) Start() error {
 
 		util.LOGGER.Info("task success", "task", SendTelegramNotification)
 		return nil
-  })
-    
+	})
+
 	mux.HandleFunc(PublishQRTicket, func(ctx context.Context, t *asynq.Task) error {
 		// Unmarshal payload
 		var payload PublishQRTicketPayload

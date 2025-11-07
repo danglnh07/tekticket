@@ -3,7 +3,9 @@ package util
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
+	"tekticket/db"
 
 	"github.com/joho/godotenv"
 )
@@ -19,9 +21,7 @@ type Config struct {
 	DirectusAddr string
 	// Used to make request to Directus API that required admin access.
 	DirectusStaticToken string
-	// Since Ngrok also a service orchestration in docker-compose, we cannot dynamically set it
-	NgrokAuthToken string
-	// Since Directus also depend on Cloudinary for its cloud storage, we can also dynamically configure it
+	// Since Directus also depend on Cloudinary for its cloud storage, we can't dynamically configure it
 	CloudStorageName   string // Cloudinary cloud name
 	CloudStorageKey    string // Cloudinary API key
 	CloudStorageSecret string // Cloudinary secret key
@@ -38,7 +38,7 @@ type Config struct {
 	TelegramBotToken     string `json:"telegram_bot_token"`     // Telegram bot token
 	ServerDomain         string `json:"server_domain"`          // Server domain, it can be Ngrok generated, or a custom domain
 	MaxWorkers           int    `json:"max_workers"`            // The total of background workers running in the background
-	PaymentFeePercent    string `json:"payment_fee_percent"`    // Payment fee percent. Directus will return a string if it a float number
+	PaymentFeePercent    string `json:"payment_fee_percent"`    // Payment fee percent. Directus will return a string if it a decimal
 }
 
 // Constructor method for Config struct
@@ -53,14 +53,12 @@ func (config *Config) LoadStaticConfig(path string) error {
 		config.RedisAddr = os.Getenv("REDIS_ADDR")
 		config.DirectusAddr = os.Getenv("DIRECTUS_ADDR")
 		config.DirectusStaticToken = os.Getenv("DIRECTUS_STATIC_TOKEN")
-		config.NgrokAuthToken = os.Getenv("NGROK_AUTHTOKEN")
 		return err
 	}
 
 	config.RedisAddr = os.Getenv("REDIS_ADDR")
 	config.DirectusAddr = os.Getenv("DIRECTUS_ADDR")
 	config.DirectusStaticToken = os.Getenv("DIRECTUS_STATIC_TOKEN")
-	config.NgrokAuthToken = os.Getenv("NGROK_AUTHTOKEN")
 	return nil
 }
 
@@ -70,7 +68,7 @@ func (config *Config) LoadDynamicConfig() error {
 	// Make request to Directus
 	url := fmt.Sprintf("%s/items/settings?filter[in_used][_eq]=true", config.DirectusAddr)
 	var configs []Config
-	_, err := MakeRequest("GET", url, nil, config.DirectusStaticToken, &configs)
+	_, err := db.MakeRequest("GET", url, nil, config.DirectusStaticToken, &configs)
 	if err != nil {
 		return err
 	}
@@ -85,17 +83,24 @@ func (config *Config) LoadDynamicConfig() error {
 	config.SecretKey = configs[0].SecretKey
 	config.ResetPasswordURL = configs[0].ResetPasswordURL
 	config.CheckinURL = configs[0].CheckinURL
-	config.CloudStorageName = configs[0].CloudStorageName
-	config.CloudStorageKey = configs[0].CloudStorageKey
-	config.CloudStorageSecret = configs[0].CloudStorageSecret
 	config.StripePublishableKey = configs[0].StripePublishableKey
 	config.StripeSecretKey = configs[0].StripeSecretKey
 	config.AblyApiKey = configs[0].AblyApiKey
 	config.TelegramBotToken = configs[0].TelegramBotToken
-	config.NgrokAuthToken = configs[0].NgrokAuthToken
 	config.ServerDomain = configs[0].ServerDomain
 	config.MaxWorkers = configs[0].MaxWorkers
 	config.PaymentFeePercent = configs[0].PaymentFeePercent
+
+	// Try ping to server domain, if they are running. If not, we are using the localhost domain
+	resp, err := http.Get(fmt.Sprintf("%s/api", config.ServerDomain))
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		LOGGER.Warn("Cannot ping to server domain. Using local domain instead", "domain", config.ServerDomain, "status", resp.Status)
+		config.ServerDomain = "http://localhost:8080"
+	}
 
 	return nil
 }

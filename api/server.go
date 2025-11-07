@@ -98,6 +98,7 @@ func (server *Server) RegisterHandler() {
 		payments := api.Group("/payments") // Avoid using the word 'payment' to prevent collision with the payment package
 		{
 			payments.POST("", server.CreatePayment)
+			payments.GET("/method", server.CreatePaymentMethod)
 			payments.POST("/:id/confirm", server.ConfirmPayment)
 		}
 

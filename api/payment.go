@@ -88,6 +88,26 @@ func (server *Server) CreatePayment(ctx *gin.Context) {
 	})
 }
 
+// CreatePaymentMethod godoc
+// @Summary      Create payment method
+// @Description  Create payment method for confirm payment. This API is solely for internal testing, not to be consumed by any client
+// @Tags         Payments
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  SuccessMessage   "Payment method ID of mock visa"
+// @Failure      500  {object}  ErrorResponse                    "Internal server error"
+// @Router       /api/payments/method [get]
+func (server *Server) CreatePaymentMethod(ctx *gin.Context) {
+	pm, err := payment.CreatePaymentMethodFromToken("tok_visa")
+	if err != nil {
+		util.LOGGER.Error("GET /api/payments/method: failed to create mock token payment method", "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, SuccessMessage{"Payment method: " + pm.ID})
+}
+
 type ConfirmPaymentRequest struct {
 	PaymentIntentID string `json:"payment_intent_id" binding:"required"`
 	PaymentMethodID string `json:"payment_method_id" binding:"required"`
@@ -162,7 +182,7 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 			err := server.distributor.DistributeTask(ctx, worker.PublishQRTicket, worker.PublishQRTicketPayload{
 				BookingItemID: item.ID,
 				CheckInURL:    server.config.CheckinURL,
-			}, asynq.MaxRetry(5))
+			}, asynq.Queue(worker.HIGH_IMPACT), asynq.MaxRetry(5))
 
 			if err != nil {
 				util.LOGGER.Error(
