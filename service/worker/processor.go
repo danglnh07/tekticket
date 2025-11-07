@@ -6,6 +6,7 @@ import (
 	"tekticket/db"
 	"tekticket/service/bot"
 	"tekticket/service/notify"
+	"tekticket/service/uploader"
 	"tekticket/util"
 
 	"github.com/hibiken/asynq"
@@ -39,6 +40,8 @@ type RedisTaskProcessor struct {
 	mailService notify.MailService
 	ablyService *notify.AblyService
 	bot         *bot.Chatbot
+	mailService   notify.MailService
+	uploadService *uploader.Uploader
 
 	// Config
 	config *util.Config
@@ -49,6 +52,7 @@ func NewRedisTaskProcessor(
 	redisOpts asynq.RedisClientOpt,
 	queries *db.Queries,
 	mailService notify.MailService,
+  uploadService *uploader.Uploader,
 	ablyService *notify.AblyService,
 	bot *bot.Chatbot,
 	config *util.Config,
@@ -57,6 +61,7 @@ func NewRedisTaskProcessor(
 		server:      asynq.NewServer(redisOpts, asynq.Config{Queues: queues}),
 		queries:     queries,
 		mailService: mailService,
+    uploadService: uploadService,
 		ablyService: ablyService,
 		bot:         bot,
 		config:      config,
@@ -157,6 +162,25 @@ func (processor *RedisTaskProcessor) Start() error {
 
 		util.LOGGER.Info("task success", "task", SendTelegramNotification)
 		return nil
+  })
+    
+	mux.HandleFunc(PublishQRTicket, func(ctx context.Context, t *asynq.Task) error {
+		// Unmarshal payload
+		var payload PublishQRTicketPayload
+		if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+			util.LOGGER.Error("failed to process task", "task", PublishQRTicket, "error", err)
+			return err
+		}
+
+		err := processor.PublishQRTicket(payload)
+		if err != nil {
+			util.LOGGER.Error("failed to process task", "task", PublishQRTicket, "error", err)
+			return err
+		}
+
+		util.LOGGER.Info("task success", "task", PublishQRTicket)
+		return nil
+
 	})
 
 	return processor.server.Start(mux)

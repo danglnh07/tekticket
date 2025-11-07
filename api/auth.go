@@ -1,8 +1,6 @@
 package api
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -102,7 +100,7 @@ func (server *Server) Register(ctx *gin.Context) {
 
 	url := fmt.Sprintf("%s/%s", server.config.DirectusAddr, "users")
 	var result RegisterResponse
-	status, err := util.MakeRequest("POST", url, body, server.config.DirectusStaticToken, &result)
+	status, err := db.MakeRequest("POST", url, body, server.config.DirectusStaticToken, &result)
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/register: failed to make API request to Directus", "error", err)
 		ctx.JSON(status, ErrorResponse{err.Error()})
@@ -170,7 +168,7 @@ func (server *Server) VerifyAccount(ctx *gin.Context) {
 
 	// Update status
 	url := fmt.Sprintf("%s/%s/%s", server.config.DirectusAddr, "users", id)
-	status, err := util.MakeRequest("PATCH", url, map[string]any{"status": "active"}, server.config.DirectusStaticToken, nil)
+	status, err := db.MakeRequest("PATCH", url, map[string]any{"status": "active"}, server.config.DirectusStaticToken, nil)
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/verify: failed to update account status", "error", err)
 		ctx.JSON(status, ErrorResponse{err.Error()})
@@ -198,7 +196,7 @@ func (server *Server) SendOTP(ctx *gin.Context) {
 	// Check if this user exists
 	url := server.config.DirectusAddr + "/users/" + id
 	var result RegisterResponse
-	status, err := util.MakeRequest("GET", url, nil, server.config.DirectusStaticToken, &result)
+	status, err := db.MakeRequest("GET", url, nil, server.config.DirectusStaticToken, &result)
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/resend-otp: failed to get user data", "error", err)
 		ctx.JSON(status, ErrorResponse{err.Error()})
@@ -256,7 +254,7 @@ func (server *Server) Login(ctx *gin.Context) {
 	// Call login request to Directus
 	url := fmt.Sprintf("%s/%s/%s", server.config.DirectusAddr, "auth", "login")
 	var result LoginResponse
-	status, err := util.MakeRequest("POST", url, map[string]any{
+	status, err := db.MakeRequest("POST", url, map[string]any{
 		"email":    req.Email,
 		"password": req.Password,
 	}, server.config.DirectusStaticToken, &result)
@@ -270,17 +268,10 @@ func (server *Server) Login(ctx *gin.Context) {
 	// Get user ID from access token. Note that JWT payload should use base64.RawURLEncoding instead of base64.URLEncoding
 	// Even if this failed for some reasons, the consumer (client) can still get the user ID from the JWT access token, so we won't
 	// return error here.
-	jwtPayload, err := base64.RawURLEncoding.DecodeString(strings.Split(result.AccessToken, ".")[1])
-	if err != nil {
-		util.LOGGER.Error("POST /api/auth/login: failed to decode JWT payload", "error", err)
+	if id, err := util.ExtractIDFromToken(result.AccessToken); err == nil {
+		result.ID = id
 	} else {
-		// If decode success, try unmarshal payload to get user ID
-		var tokenPayload map[string]any
-		if err := json.Unmarshal(jwtPayload, &tokenPayload); err != nil {
-			util.LOGGER.Error("POST /api/auth/login: failed to get user ID from access token", "error", err)
-		} else {
-			result.ID = tokenPayload["id"].(string)
-		}
+		util.LOGGER.Error("POST /api/auth/login: failed to decode JWT payload", "error", err)
 	}
 
 	ctx.JSON(http.StatusOK, result)
@@ -312,7 +303,7 @@ func (server *Server) Logout(ctx *gin.Context) {
 
 	// Make request to Directus
 	url := fmt.Sprintf("%s/%s/%s", server.config.DirectusAddr, "auth", "logout")
-	status, err := util.MakeRequest(
+	status, err := db.MakeRequest(
 		"POST",
 		url,
 		map[string]any{"refresh_token": req.RefreshToken},
@@ -348,7 +339,7 @@ func (server *Server) RefreshToken(ctx *gin.Context) {
 
 	url := fmt.Sprintf("%s/%s/%s", server.config.DirectusAddr, "auth", "refresh")
 	var result LoginResponse
-	status, err := util.MakeRequest(
+	status, err := db.MakeRequest(
 		"POST",
 		url,
 		map[string]any{"refresh_token": req.RefreshToken},
@@ -383,7 +374,7 @@ func (server *Server) SendResetPasswordRequest(ctx *gin.Context) {
 	// Get the account ID
 	url := fmt.Sprintf("%s/users?filter[email][_eq]=%s", server.config.DirectusAddr, email)
 	var result []RegisterResponse
-	status, err := util.MakeRequest("GET", url, nil, server.config.DirectusStaticToken, &result)
+	status, err := db.MakeRequest("GET", url, nil, server.config.DirectusStaticToken, &result)
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/password/request: failed to make request to Directus", "error", err)
 		ctx.JSON(status, ErrorResponse{err.Error()})
@@ -465,7 +456,7 @@ func (server *Server) ResetPassword(ctx *gin.Context) {
 
 	// Update password
 	url := fmt.Sprintf("%s/users/%s", server.config.DirectusAddr, segments[0])
-	status, err := util.MakeRequest("PATCH", url, map[string]any{"password": req.NewPassword}, server.config.DirectusStaticToken, nil)
+	status, err := db.MakeRequest("PATCH", url, map[string]any{"password": req.NewPassword}, server.config.DirectusStaticToken, nil)
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/password/reset: failed to make request to Directus", "error", err)
 		ctx.JSON(status, ErrorResponse{err.Error()})

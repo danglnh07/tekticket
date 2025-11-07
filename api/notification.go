@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"tekticket/db"
 	"tekticket/service/bot"
 	"tekticket/service/worker"
+	"tekticket/service/payment"
 	"tekticket/util"
 	"time"
 
@@ -125,7 +127,7 @@ func (server *Server) TelegramWebhook(ctx *gin.Context) {
 
 		// If exists, we add new entry to the user_telegram collections
 		url = fmt.Sprintf("%s/items/user_telegrams", server.config.DirectusAddr)
-		_, err = util.MakeRequest("POST", url, map[string]any{
+		_, err = db.MakeRequest("POST", url, map[string]any{
 			"telegram_chat_id": fmt.Sprintf("%d", req.Message.Chat.ID),
 			"user_id":          users[0].ID,
 		}, server.config.DirectusStaticToken, nil)
@@ -147,10 +149,19 @@ func (server *Server) TelegramWebhook(ctx *gin.Context) {
 		// Store the current chatID into cache
 		server.queries.SetCache(ctx, fmt.Sprintf("%d", chatID), "", time.Hour) // The value can be whatever, we don't really care
 	default:
-		err := server.bot.SendMessage(req.Message.Chat.ID, "This is an echo message hehe: "+req.Message.Text)
+		// Create a payment method
+		pm, err := payment.CreatePaymentMethodFromToken("tok_visa")
 		if err != nil {
-			util.LOGGER.Error("POST /api/webhook/telegram: failed to send message", "error", err)
+			util.LOGGER.Error("POST /api/webhook/telegram: failed to create payment method", "error", err)
+			server.bot.SendMessage(req.Message.Chat.ID, "Internal server error: "+err.Error())
+		} else {
+			server.bot.SendMessage(req.Message.Chat.ID, "Payment method ID: "+pm.ID)
 		}
+
+		// err = server.bot.SendMessage(req.Message.Chat.ID, "This is an echo message hehe: "+req.Message.Text)
+		// if err != nil {
+		// 	util.LOGGER.Error("POST /api/webhook/telegram: failed to send message", "error", err)
+		// }
 	}
 }
 

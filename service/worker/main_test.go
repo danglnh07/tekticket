@@ -8,6 +8,7 @@ import (
 	"tekticket/db"
 	"tekticket/service/bot"
 	"tekticket/service/notify"
+	"tekticket/service/uploader"
 	"tekticket/util"
 	"testing"
 
@@ -45,9 +46,27 @@ func TestMain(m *testing.M) {
 	}
 	bot, err := bot.NewChatbot(os.Getenv("TELEGRAM_BOT_TOKEN"), fmt.Sprintf("%s/api/webhook/telegram", os.Getenv("SERVER_DOMAIN")))
 
+	cld, err := uploader.NewCld(os.Getenv("CLOUDINARY_NAME"), os.Getenv("CLOUDINARY_APIKEY"), os.Getenv("CLOUDINARY_APISECRET"))
+	if err != nil {
+		util.LOGGER.Error("failed to create cloudinary service", "error", err)
+		os.Exit(1)
+	}
+	util.LOGGER.Info(
+		"env",
+		"directus addr", os.Getenv("DIRECTUS_ADDR"),
+		"static token", os.Getenv("DIRECTUS_STATIC_TOKEN"),
+		"secret key", os.Getenv("SECRET_KEY"),
+	)
 	config := &util.Config{
-		ResetPasswordURL: "http://localhost:3000", // Just some dump value, we only care about the token in this test
+		ResetPasswordURL:    "http://localhost:3000", // Just some dump value, we only care about the token in this test
+		DirectusAddr:        os.Getenv("DIRECTUS_ADDR"),
+		DirectusStaticToken: os.Getenv("DIRECTUS_STATIC_TOKEN"),
+		SecretKey:           os.Getenv("SECRET_KEY"),
 	}
 	processor = NewRedisTaskProcessor(asynq.RedisClientOpt{Addr: os.Getenv("REDIS_ADDR")}, queries, mailService, ablyService, bot, config)
+
+	uploadService := uploader.NewUploader(cld, config)
+
+	processor = NewRedisTaskProcessor(asynq.RedisClientOpt{Addr: os.Getenv("REDIS_ADDR")}, queries, mailService, uploadService, config)
 	os.Exit(m.Run())
 }

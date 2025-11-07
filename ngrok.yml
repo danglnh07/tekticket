@@ -1,11 +1,10 @@
 version: 2
-
 tunnels:
-    # directus8055:
-    #     proto: http
-    #     addr: directus:8055
-    #     url: kimberlie-millesimal-muscly.ngrok-free.dev
-    app8080:
-        proto: http
-        addr: app:8080
-        url: kimberlie-millesimal-muscly.ngrok-free.dev
+  # directus8055:
+  #     proto: http
+  #     addr: directus:8055
+  #     url: kimberlie-millesimal-muscly.ngrok-free.dev
+  app8080:
+    proto: http
+    addr: app:8080
+    url: kimberlie-millesimal-muscly.ngrok-free.dev

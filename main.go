@@ -11,6 +11,7 @@ import (
 	"tekticket/db"
 	"tekticket/service/bot"
 	"tekticket/service/notify"
+	"tekticket/service/payment"
 	"tekticket/service/uploader"
 	"tekticket/service/worker"
 	"tekticket/util"
@@ -49,6 +50,7 @@ func main() {
 		util.LOGGER.Error("failed to initialize uploader service", "error", err)
 		os.Exit(1)
 	}
+	uploadService := uploader.NewUploader(cld, config)
 	mailService := notify.NewEmailService(config.Email, config.AppPassword)
 	bot, err := bot.NewChatbot(config.TelegramBotToken, fmt.Sprintf("%s/api/webhook/telegram", config.ServerDomain))
 	if err != nil {
@@ -65,6 +67,9 @@ func main() {
 		os.Exit(1)
 	}
 
+  // Init Stripe
+  payment.InitStripe(config.StripeSecretKey)
+  
 	// Start the background server in separate goroutine (since it's will block the main thread)
 	util.LOGGER.Info("Max workers", "val", config.MaxWorkers)
 	for range config.MaxWorkers { // This should be configure, but let's just use a constant for now
@@ -82,9 +87,9 @@ func main() {
 		}()
 
 	}
-
+	
 	// Start server
-	server := api.NewServer(queries, distributor, mailService, cld, bot, config)
+	server := api.NewServer(queries, distributor, mailService, uploadService, bot, config)
 	if err := server.Start(); err != nil {
 		util.LOGGER.Error("Failed to start server", "error", err)
 		os.Exit(1)
@@ -95,12 +100,13 @@ func StartBackgroundProcessor(
 	redisOpts asynq.RedisClientOpt,
 	queries *db.Queries,
 	mailService notify.MailService,
+  uploadService *uploader.Upload,
 	ablyService *notify.AblyService,
 	bot *bot.Chatbot,
 	config *util.Config,
 ) error {
 	// Create the processor
-	processor := worker.NewRedisTaskProcessor(redisOpts, queries, mailService, ablyService, bot, config)
+	processor := worker.NewRedisTaskProcessor(redisOpts, queries, mailService, uploadService, ablyService, bot, config)
 
 	// Start process tasks
 	return processor.Start()

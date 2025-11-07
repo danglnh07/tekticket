@@ -192,3 +192,25 @@ func FormatNotificationHTML(title, body string) string {
 	// Body should already be an HTML template, so we don't do anything to it
 	return fmt.Sprintf("<b>%s</b>\n\n%s", strings.ToUpper(title), body)
 }
+  
+// Helper method: get user ID from access token
+func ExtractIDFromToken(token string) (string, error) {
+	// Decode base64 token to get the JWT payload
+	jwtPayload, err := base64.RawURLEncoding.DecodeString(strings.Split(token, ".")[1])
+	if err != nil {
+		return "", err
+	}
+
+	// If decode success, try unmarshal payload to get user ID
+	var tokenPayload map[string]any
+	if err := json.Unmarshal(jwtPayload, &tokenPayload); err != nil {
+		return "", err
+	}
+
+	// Try parsing ID from map (avoid panic error)
+	if id, ok := tokenPayload["id"].(string); ok {
+		return id, nil
+	}
+
+	return "", fmt.Errorf("failed to parse ID")
+}

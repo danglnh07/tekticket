@@ -1,61 +1,82 @@
 definitions:
-  api.Category:
+  api.BookingItemCreate:
     properties:
-      description:
+      event_schedule_id:
         type: string
+      seat_id:
+        type: string
+      ticket_id:
+        type: string
+    required:
+    - event_schedule_id
+    - seat_id
+    - ticket_id
+    type: object
+  api.ConfirmPaymentRequest:
+    properties:
+      payment_intent_id:
+        type: string
+      payment_method_id:
+        type: string
+    required:
+    - payment_intent_id
+    - payment_method_id
+    type: object
+  api.CreateBookingRequest:
+    properties:
+      event_id:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/api.BookingItemCreate'
+        minItems: 1
+        type: array
+    required:
+    - event_id
+    - items
+    type: object
+  api.CreateBookingResponse:
+    properties:
+      customer:
+        $ref: '#/definitions/db.User'
+      event:
+        $ref: '#/definitions/db.Event'
+      fee_charged:
+        type: integer
       id:
         type: string
-      name:
+      status:
         type: string
+      tickets:
+        items:
+          $ref: '#/definitions/db.BookingItem'
+        type: array
+      total_price_paid:
+        type: integer
     type: object
-  api.Creator:
+  api.CreatePaymentRequest:
     properties:
-      email:
+      amount:
+        type: integer
+      booking_id:
         type: string
-      first_name:
+    required:
+    - amount
+    - booking_id
+    type: object
+  api.CreatePaymentResponse:
+    properties:
+      client_secret:
         type: string
-      last_name:
+      payment:
+        $ref: '#/definitions/db.Payment'
+      publishable_key:
         type: string
     type: object
   api.ErrorResponse:
     properties:
       error:
         type: string
-    type: object
-  api.EventDetail:
-    properties:
-      address:
-        type: string
-      categories:
-        $ref: '#/definitions/api.Category'
-      city:
-        type: string
-      country:
-        type: string
-      creator:
-        $ref: '#/definitions/api.Creator'
-      description:
-        type: string
-      event_schedules:
-        items:
-          $ref: '#/definitions/api.EventSchedule'
-        type: array
-      id:
-        type: string
-      name:
-        type: string
-      preview_image:
-        type: string
-      seat_zones:
-        items:
-          $ref: '#/definitions/api.SeatZone'
-        type: array
-      slug:
-        type: string
-      tickets:
-        items:
-          $ref: '#/definitions/api.Ticket'
-        type: array
     type: object
   api.EventInfo:
     properties:
@@ -65,7 +86,7 @@ definitions:
         description: Minimum ticket price
         type: integer
       category:
-        $ref: '#/definitions/api.Category'
+        $ref: '#/definitions/db.Category'
       city:
         type: string
       country:
@@ -78,19 +99,6 @@ definitions:
         type: string
       start_time:
         description: Closest upcoming schedule time
-        type: string
-    type: object
-  api.EventSchedule:
-    properties:
-      end_checkin_time:
-        type: string
-      end_time:
-        type: string
-      id:
-        type: string
-      start_checkin_time:
-        type: string
-      start_time:
         type: string
     type: object
   api.LoginRequest:
@@ -229,60 +237,10 @@ definitions:
       token:
         type: string
     type: object
-  api.Seat:
-    properties:
-      id:
-        type: string
-      seat_number:
-        type: string
-      status:
-        type: string
-    type: object
-  api.SeatZone:
-    properties:
-      description:
-        type: string
-      id:
-        type: string
-      seats:
-        items:
-          $ref: '#/definitions/api.Seat'
-        type: array
-      total_seats:
-        type: integer
-    type: object
   api.SuccessMessage:
     properties:
       message:
         type: string
-    type: object
-  api.Ticket:
-    properties:
-      base_price:
-        type: integer
-      description:
-        type: string
-      id:
-        type: string
-      rank:
-        type: string
-      ticket_selling_schedules:
-        items:
-          $ref: '#/definitions/api.TicketSellingSchedule'
-        type: array
-    type: object
-  api.TicketSellingSchedule:
-    properties:
-      available:
-        type: integer
-      end_selling_time:
-        type: string
-      id:
-        type: string
-      start_selling_time:
-        type: string
-      total:
-        type: integer
     type: object
   api.UpdateProfileRequest:
     properties:
@@ -296,6 +254,270 @@ definitions:
         type: string
       password:
         type: string
+    type: object
+  db.Booking:
+    properties:
+      booking_items:
+        items:
+          $ref: '#/definitions/db.BookingItem'
+        type: array
+      customer_id:
+        $ref: '#/definitions/db.User'
+      event_id:
+        $ref: '#/definitions/db.Event'
+      id:
+        type: string
+      payments:
+        items:
+          $ref: '#/definitions/db.Payment'
+        type: array
+      status:
+        type: string
+    type: object
+  db.BookingItem:
+    properties:
+      booking_id:
+        $ref: '#/definitions/db.Booking'
+      event_schedule_id:
+        $ref: '#/definitions/db.EventSchedule'
+      id:
+        type: string
+      price:
+        type: integer
+      qr:
+        type: string
+      seat_id:
+        $ref: '#/definitions/db.Seat'
+      status:
+        type: string
+      ticket_id:
+        $ref: '#/definitions/db.Ticket'
+    type: object
+  db.Category:
+    properties:
+      description:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      status:
+        type: string
+    type: object
+  db.Event:
+    properties:
+      address:
+        type: string
+      bookings:
+        items:
+          $ref: '#/definitions/db.Booking'
+        type: array
+      category_id:
+        $ref: '#/definitions/db.Category'
+      city:
+        type: string
+      country:
+        type: string
+      creator_id:
+        $ref: '#/definitions/db.User'
+      description:
+        type: string
+      event_schedules:
+        items:
+          $ref: '#/definitions/db.EventSchedule'
+        type: array
+      id:
+        type: string
+      name:
+        type: string
+      preview_image:
+        type: string
+      seat_zone:
+        items:
+          $ref: '#/definitions/db.SeatZone'
+        type: array
+      slug:
+        type: string
+      status:
+        type: string
+      tickets:
+        items:
+          $ref: '#/definitions/db.Ticket'
+        type: array
+    type: object
+  db.EventSchedule:
+    properties:
+      end_checkin_time:
+        type: string
+      end_time:
+        type: string
+      id:
+        type: string
+      start_checkin_time:
+        type: string
+      start_time:
+        type: string
+    type: object
+  db.Membership:
+    properties:
+      base_point:
+        type: integer
+      discount:
+        description: Directus will return a string even if they are set as decimal
+        type: string
+      early_buy_time:
+        type: integer
+      id:
+        type: string
+      status:
+        type: string
+      tier:
+        type: string
+    type: object
+  db.Payment:
+    properties:
+      amount:
+        type: integer
+      booking_id:
+        $ref: '#/definitions/db.Booking'
+      id:
+        type: string
+      payment_gateway:
+        type: string
+      payment_method:
+        type: string
+      refunds:
+        items:
+          $ref: '#/definitions/db.Refund'
+        type: array
+      status:
+        type: string
+      transaction_id:
+        type: string
+    type: object
+  db.Refund:
+    properties:
+      amount:
+        type: integer
+      id:
+        type: string
+      payment_id:
+        $ref: '#/definitions/db.Payment'
+      reason:
+        type: string
+      status:
+        type: string
+    type: object
+  db.Role:
+    properties:
+      description:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  db.Seat:
+    properties:
+      id:
+        type: string
+      reserved_by:
+        $ref: '#/definitions/db.User'
+      seat_number:
+        type: string
+      seat_zone_id:
+        $ref: '#/definitions/db.SeatZone'
+      status:
+        type: string
+    type: object
+  db.SeatZone:
+    properties:
+      description:
+        type: string
+      event_id:
+        $ref: '#/definitions/db.Event'
+      id:
+        type: string
+      seats:
+        items:
+          $ref: '#/definitions/db.Seat'
+        type: array
+      status:
+        type: string
+      tickets:
+        items:
+          $ref: '#/definitions/db.Ticket'
+        type: array
+      total_seats:
+        type: integer
+    type: object
+  db.Ticket:
+    properties:
+      base_price:
+        type: integer
+      description:
+        type: string
+      event_id:
+        $ref: '#/definitions/db.Event'
+      id:
+        type: string
+      rank:
+        type: string
+      seat_zone_id:
+        $ref: '#/definitions/db.SeatZone'
+      status:
+        type: string
+    type: object
+  db.User:
+    properties:
+      avatar:
+        type: string
+      bookings:
+        items:
+          $ref: '#/definitions/db.Booking'
+        type: array
+      email:
+        type: string
+      first_name:
+        type: string
+      id:
+        type: string
+      last_name:
+        type: string
+      location:
+        type: string
+      password:
+        type: string
+      role:
+        $ref: '#/definitions/db.Role'
+      status:
+        type: string
+      user_membership_logs:
+        items:
+          $ref: '#/definitions/db.UserMembershipLog'
+        type: array
+      user_telegrams:
+        items:
+          $ref: '#/definitions/db.UserTelegram'
+        type: array
+    type: object
+  db.UserMembershipLog:
+    properties:
+      id:
+        type: string
+      points_delta:
+        type: integer
+      resulting_points:
+        type: integer
+    type: object
+  db.UserTelegram:
+    properties:
+      id:
+        type: string
+      telegram_chat_id:
+        type: string
+      user_id:
+        $ref: '#/definitions/db.User'
     type: object
 info:
   contact: {}
@@ -561,6 +783,130 @@ paths:
       summary: Verify user account
       tags:
       - Auth
+  /api/bookings:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves the list of completed bookings for the authenticated
+        user, including event and category details.
+      parameters:
+      - description: 'Maximum number of records to return (default: 50)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Number of records to skip before returning results (default:
+          0)'
+        in: query
+        name: offset
+        type: integer
+      - description: Sort order, e.g. -date_created (default)
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of completed bookings retrieved successfully
+          schema:
+            items:
+              items:
+                $ref: '#/definitions/db.Booking'
+              type: array
+            type: array
+        "400":
+          description: Invalid token or parameters
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized access
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to communicate with Directus
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get user's booking history
+      tags:
+      - Bookings
+    post:
+      consumes:
+      - application/json
+      description: Creates a new booking for an event, including its associated ticket
+        and seat items.
+      parameters:
+      - description: Booking creation payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateBookingRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Booking created successfully
+          schema:
+            $ref: '#/definitions/api.CreateBookingResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized access
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to communicate with Directus
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a new booking
+      tags:
+      - Bookings
+  /api/bookings/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves the detailed information of a specific booking, including
+        event details, schedules, and ticket data.
+      parameters:
+      - description: Booking ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Booking detail retrieved successfully
+          schema:
+            $ref: '#/definitions/db.Booking'
+        "400":
+          description: Invalid request parameters
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized access
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Booking not found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or failed to communicate with Directus
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get booking detail
+      tags:
+      - Bookings
   /api/categories:
     get:
       consumes:
@@ -573,7 +919,7 @@ paths:
           description: List of categories retrieved successfully
           schema:
             items:
-              $ref: '#/definitions/api.Category'
+              $ref: '#/definitions/db.Category'
             type: array
         "401":
           description: Unauthorized access
@@ -666,7 +1012,7 @@ paths:
         "200":
           description: Event details retrieved successfully
           schema:
-            $ref: '#/definitions/api.EventDetail'
+            $ref: '#/definitions/db.Event'
         "400":
           description: Invalid or missing event ID
           schema:
@@ -685,7 +1031,7 @@ paths:
             $ref: '#/definitions/api.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Retrieve a single event by ID
+      summary: Retrieve a single event by ID or by its slug
       tags:
       - Events
   /api/memberships:
@@ -701,7 +1047,7 @@ paths:
           description: List of memberships retrieved successfully
           schema:
             items:
-              $ref: '#/definitions/api.MembershipTier'
+              $ref: '#/definitions/db.Membership'
             type: array
         "401":
           description: Unauthorized access
@@ -716,18 +1062,12 @@ paths:
       summary: List all published membership tiers
       tags:
       - Memberships
-  /api/memberships/{user_id}:
+  /api/memberships/me:
     get:
       consumes:
       - application/json
       description: Calculate points from total payments (100,000 VND = 10 points)
         and determine tier
-      parameters:
-      - description: User ID
-        in: path
-        name: user_id
-        required: true
-        type: string
       produces:
       - application/json
       responses:

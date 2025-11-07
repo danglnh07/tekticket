@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"tekticket/db"
 	"tekticket/util"
 
 	"github.com/gin-gonic/gin"
@@ -34,7 +35,7 @@ func (server *Server) GetProfile(ctx *gin.Context) {
 	// Get user
 	url := fmt.Sprintf("%s/%s/%s?fields=id,first_name,last_name,email,location,avatar", server.config.DirectusAddr, "users", "me")
 	var profile ProfileResponse
-	status, err := util.MakeRequest("GET", url, nil, server.GetToken(ctx), &profile)
+	status, err := db.MakeRequest("GET", url, nil, server.GetToken(ctx), &profile)
 	if err != nil {
 		util.LOGGER.Error("GET /api/profile: failed to make request to Directus", "error", err)
 		ctx.JSON(status, ErrorResponse{err.Error()})
@@ -98,8 +99,10 @@ func (server *Server) UpdateProfile(ctx *gin.Context) {
 	}
 
 	if req.Avatar = strings.TrimSpace(req.Avatar); req.Avatar != "" {
-		avatarID, err := server.UploadImage(ctx, req.Avatar)
+		status, avatarID, err := server.uploadService.UploadImage(ctx, req.Avatar)
 		if err != nil {
+			util.LOGGER.Error("PUT /api/profile: failed to upload new avatar image", "status", status, "error", err)
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"failed to handle avatar image"})
 			return
 		}
 
@@ -109,7 +112,7 @@ func (server *Server) UpdateProfile(ctx *gin.Context) {
 	// Make request to Directus API
 	url := fmt.Sprintf("%s/%s/%s", server.config.DirectusAddr, "users", "me")
 	var profile ProfileResponse
-	status, err := util.MakeRequest("PATCH", url, data, server.GetToken(ctx), &profile)
+	status, err := db.MakeRequest("PATCH", url, data, server.GetToken(ctx), &profile)
 	if err != nil {
 		util.LOGGER.Error("PUT /api/profile: failed to make request into Directus", "error", err)
 		ctx.JSON(status, ErrorResponse{err.Error()})
