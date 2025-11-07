@@ -51,16 +51,16 @@ func NewConfig() *Config {
 func (config *Config) LoadStaticConfig(path string) error {
 	err := godotenv.Load(path)
 	if err != nil {
-		config.RedisAddr = os.Getenv("REDIS_ADDR")
-		config.DirectusAddr = os.Getenv("DIRECTUS_ADDR")
+		config.RedisAddr = os.Getenv("DOCKER_REDIS_ADDR")
+		config.DirectusAddr = os.Getenv("DOCKER_DIRECTUS_DOMAIN")
 		config.DirectusStaticToken = os.Getenv("DIRECTUS_STATIC_TOKEN")
 		config.DockerServerDomain = os.Getenv("DOCKER_SERVER_DOMAIN")
 		config.DockerTelegramDomain = os.Getenv("DOCKER_TELEGRAM_DOMAIN")
 		return err
 	}
 
-	config.RedisAddr = os.Getenv("REDIS_ADDR")
-	config.DirectusAddr = os.Getenv("DIRECTUS_ADDR")
+	config.RedisAddr = os.Getenv("DOCKER_REDIS_ADDR")
+	config.DirectusAddr = os.Getenv("DOCKER_DIRECTUS_DOMAIN")
 	config.DirectusStaticToken = os.Getenv("DIRECTUS_STATIC_TOKEN")
 	config.DockerServerDomain = os.Getenv("DOCKER_SERVER_DOMAIN")
 	config.DockerTelegramDomain = os.Getenv("DOCKER_TELEGRAM_DOMAIN")
