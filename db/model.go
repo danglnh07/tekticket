@@ -82,7 +82,7 @@ type Event struct {
 	Creator        *User           `json:"creator_id,omitempty"`
 	Category       *Category       `json:"category_id,omitempty"`
 	EventSchedules []EventSchedule `json:"event_schedules,omitempty"`
-	SeatZones      []SeatZone      `json:"seat_zone,omitempty"`
+	SeatZones      []SeatZone      `json:"seat_zones,omitempty"`
 	Tickets        []Ticket        `json:"tickets,omitempty"`
 	Bookings       []Booking       `json:"bookings,omitempty"`
 }
