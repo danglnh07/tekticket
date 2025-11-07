@@ -14,7 +14,6 @@ import (
 	"tekticket/util"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -31,7 +30,7 @@ type Server struct {
 	// Dependencies
 	distributor   worker.TaskDistributor
 	mailService   notify.MailService
-	uploadService *uploader.CloudinaryService
+	uploadService *uploader.Uploader
 	bot           *bot.Chatbot
 	config        *util.Config
 }
@@ -41,7 +40,7 @@ func NewServer(
 	queries *db.Queries,
 	distributor worker.TaskDistributor,
 	mailService notify.MailService,
-	uploadService *uploader.CloudinaryService,
+	uploadService *uploader.Uploader,
 	bot *bot.Chatbot,
 	config *util.Config,
 ) *Server {
@@ -67,6 +66,7 @@ func (server *Server) RegisterHandler() {
 			ctx.JSON(http.StatusOK, gin.H{"message": "Hello world"})
 		})
 
+		// Auth routes
 		auth := api.Group("/auth")
 		{
 			auth.POST("/register", server.Register)
@@ -79,17 +79,36 @@ func (server *Server) RegisterHandler() {
 			auth.POST("/password/reset", server.ResetPassword)
 		}
 
+		// Profile routes
 		profile := api.Group("/profile")
 		{
 			profile.GET("", server.GetProfile)
 			profile.PUT("", server.UpdateProfile)
 		}
 
+		// Booking routes
+		booking := api.Group("/bookings")
+		{
+			booking.GET("", server.ListBookingHistory)
+			booking.GET("/:id", server.GetBooking)
+			booking.POST("", server.CreateBooking)
+		}
+
+		// Payment routes
+		payments := api.Group("/payments") // Avoid using the word 'payment' to prevent collision with the payment package
+		{
+			payments.POST("", server.CreatePayment)
+			payments.GET("/method", server.CreatePaymentMethod)
+			payments.POST("/:id/confirm", server.ConfirmPayment)
+		}
+
+		// Categories routes
 		categories := api.Group("/categories")
 		{
 			categories.GET("", server.GetCategories)
 		}
 
+		// Event routes
 		events := api.Group("/events")
 		{
 			events.GET("", server.ListEvents)
@@ -100,13 +119,19 @@ func (server *Server) RegisterHandler() {
 		memberships := api.Group("/memberships")
 		{
 			memberships.GET("", server.ListMemberships)
-			memberships.GET("/:id", server.GetUserMembership)
+			memberships.GET("/me", server.GetUserMembership)
 		}
 
 		// Webhook handler
 		webhook := api.Group("/webhook")
 		{
 			webhook.POST("/telegram", server.TelegramWebhook)
+		}
+
+		// Notification
+		notification := api.Group("/notifications")
+		{
+			notification.POST("/webhook", server.NotificationWebhook)
 		}
 	}
 
@@ -117,7 +142,7 @@ func (server *Server) RegisterHandler() {
 	server.router.GET("/images/:id", func(ctx *gin.Context) {
 		id := ctx.Param("id")
 
-		// Since we need the Response object for redirecting, so we'll manually make request here, not using the util.MakeRequest
+		// Since we need the Response object for redirecting, so we'll manually make request here, not using the db.MakeRequest
 		url := fmt.Sprintf("%s/assets/%s", server.config.DirectusAddr, id)
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
@@ -165,41 +190,4 @@ type SuccessMessage struct {
 // Get the Bearer token
 func (server *Server) GetToken(ctx *gin.Context) string {
 	return strings.TrimPrefix(ctx.Request.Header.Get("Authorization"), "Bearer ")
-}
-
-type ImageResponse struct {
-	ID string `json:"id"`
-}
-
-// Upload image to both Cloudinary and Directus
-func (server *Server) UploadImage(ctx *gin.Context, image string) (string, error) {
-	path := ctx.FullPath()
-	method := ctx.Request.Method
-
-	// Upload the image into cloud service
-	cloudResp, err := server.uploadService.UploadImage(ctx, image, uuid.New().String())
-	if err != nil {
-		util.LOGGER.Error(fmt.Sprintf("%s %s: failed to upload image into the cloud", method, path), "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
-		return "", err
-	}
-
-	// Upload the image into Directus
-	url := server.config.DirectusAddr + "/files/import"
-	var imageResp ImageResponse
-	status, err := util.MakeRequest(
-		"POST",
-		url,
-		map[string]any{"url": cloudResp.SecureURL},
-		server.config.DirectusStaticToken,
-		&imageResp,
-	)
-
-	if err != nil {
-		util.LOGGER.Error(fmt.Sprintf("%s %s: failed to upload image into Directus", method, path), "error", err)
-		ctx.JSON(status, ErrorResponse{err.Error()})
-		return "", err
-	}
-
-	return imageResp.ID, nil
 }

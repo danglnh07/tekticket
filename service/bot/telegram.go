@@ -20,8 +20,10 @@ import (
 
 // Default scope and language set. You can override it directly by providing different value to the method's parameters
 var (
-	SCOPE = map[string]any{"type": "default"}
-	LANG  = "en"
+	SCOPE       = map[string]any{"type": "default"}
+	LANG        = "en"
+	FORMAT_MODE = "HTML"   // This allow for simple formatting, see more at: https://core.telegram.org/bots/api#formatting-options
+	CHAT_ACTION = "typing" // Indicate what happen in the bot side, see more at: https://core.telegram.org/bots/api#sendchataction
 )
 
 // Telegram chatbot implementation
@@ -31,9 +33,9 @@ type Chatbot struct {
 }
 
 // Constructor of chatbot, which register the Telegram server domain and setting webhook
-func NewChatbot(token, webhook string) (*Chatbot, error) {
+func NewChatbot(server, webhook string) (*Chatbot, error) {
 	bot := &Chatbot{
-		server:  "https://api.telegram.org/bot" + token,
+		server:  server,
 		webhook: webhook,
 	}
 
@@ -177,6 +179,23 @@ func (bot *Chatbot) DeleteCommands(scope map[string]any, lang string) error {
 	}, nil)
 }
 
+// Send chat action
+func (bot *Chatbot) SendChatAction(chatID int, action string) error {
+	return bot.Post("sendChatAction", map[string]any{
+		"chat_id": chatID,
+		"action":  action,
+	}, nil)
+}
+
+// Send text message to a chat
+func (bot *Chatbot) SendMessage(chatID int, text string) error {
+	return bot.Post("sendMessage", map[string]any{
+		"chat_id":    chatID,
+		"text":       text,
+		"parse_mode": FORMAT_MODE,
+	}, nil)
+}
+
 // Setup the bare requirement for this bot to run, include setting the webhook and initial commands
 func (bot *Chatbot) Setup() error {
 	// Get webhook
@@ -210,10 +229,14 @@ func (bot *Chatbot) Setup() error {
 		}
 	}
 
+	description := ""
+	description += "Start using out chatbot and receive any notification, by simply typing /start <YOUR_EMAIL> <YOUR_ROLE>. "
+	description += "If role is not provided, we'll serve you as customer"
+
 	// Set the start command, while keeping other existing commands untouch
 	bot.SetCommands([]Command{{
 		Command:     "/start",
-		Description: "Start using out chatbot and receive any notification, by simply typing /start <YOUR_EMAIL>",
+		Description: description,
 	}}, SCOPE, LANG)
 
 	return nil

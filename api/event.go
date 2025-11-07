@@ -8,125 +8,21 @@ import (
 	"time"
 
 	"strings"
+	"tekticket/db"
 	"tekticket/util"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
-// Event schedule data returned
-type EventSchedule struct {
-	ID               string `json:"id"`
-	StartTime        string `json:"start_time"`
-	EndTime          string `json:"end_time"`
-	StartCheckinTime string `json:"start_checkin_time"`
-	EndCheckinTime   string `json:"end_checkin_time"`
-}
-
-// Seat data returned
-type Seat struct {
-	ID         string `json:"id"`
-	Status     string `json:"status"`
-	SeatNumber string `json:"seat_number"`
-}
-
-// Seat zone data returned
-type SeatZone struct {
-	ID          string `json:"id"`
-	Description string `json:"description"`
-	TotalSeats  int    `json:"total_seats"`
-	Seats       []Seat `json:"seats"`
-}
-
-// Ticket selling schedules data returned
-type TicketSellingSchedule struct {
-	ID               string `json:"id"`
-	Total            int    `json:"total"`
-	Available        int    `json:"available"`
-	StartSellingTime string `json:"start_selling_time"`
-	EndSellingTime   string `json:"end_selling_time"`
-}
-
-// Ticket data returned
-type Ticket struct {
-	ID                     string                  `json:"id"`
-	Rank                   string                  `json:"rank"`
-	Description            string                  `json:"description"`
-	BasePrice              int                     `json:"base_price"`
-	TicketSellingSchedules []TicketSellingSchedule `json:"ticket_selling_schedules"`
-}
-
-// Event creator data returned
-type Creator struct {
-	Firstname string `json:"first_name"`
-	Lastname  string `json:"last_name"`
-	Email     string `json:"email"`
-}
-
-// Category data returned
-type Category struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-}
-
-// Event data return
-type EventDetail struct {
-	ID             string          `json:"id"`
-	Name           string          `json:"name"`
-	Description    string          `json:"description"`
-	Address        string          `json:"address"`
-	City           string          `json:"city"`
-	Country        string          `json:"country"`
-	Slug           string          `json:"slug"`
-	PreviewImage   string          `json:"preview_image"`
-	EventSchedules []EventSchedule `json:"event_schedules"`
-	SeatZones      []SeatZone      `json:"seat_zones"`
-	Tickets        []Ticket        `json:"tickets"`
-	Creator        Creator         `json:"creator"`
-	Category       Category        `json:"categories"`
-}
-
-// Directus response structures with status fields
-type directusSeatZone struct {
-	SeatZone
-	Status string `json:"status"`
-}
-
-type directusTicket struct {
-	Ticket
-	Status string `json:"status"`
-}
-
-type directusCategory struct {
-	Category
-	Status string `json:"status"`
-}
-
-type directusEventDetail struct {
-	ID             string             `json:"id"`
-	Status         string             `json:"status"`
-	Name           string             `json:"name"`
-	Description    string             `json:"description"`
-	Address        string             `json:"address"`
-	City           string             `json:"city"`
-	Country        string             `json:"country"`
-	Slug           string             `json:"slug"`
-	PreviewImage   string             `json:"preview_image"`
-	EventSchedules []EventSchedule    `json:"event_schedules"`
-	SeatZones      []directusSeatZone `json:"seat_zones"`
-	Tickets        []directusTicket   `json:"tickets"`
-	Creator        Creator            `json:"creator_id"`
-	Category       directusCategory   `json:"category_id"`
-}
-
-// GetEventByID godoc
-// @Summary      Retrieve a single event by ID
+// GetEvent godoc
+// @Summary      Retrieve a single event by ID or by its slug
 // @Description  Returns detailed information about a specific event, including category, images, and schedule data.
 // @Tags         Events
 // @Accept       json
 // @Produce      json
 // @Param        id              path      string  true   "Event ID"
-// @Success      200  {object}  EventDetail             "Event details retrieved successfully"
+// @Success      200  {object}  db.Event            "Event details retrieved successfully"
 // @Failure      400  {object}  ErrorResponse     "Invalid or missing event ID"
 // @Failure      401  {object}  ErrorResponse     "Unauthorized access"
 // @Failure      404  {object}  ErrorResponse     "Event not found or not published"
@@ -142,7 +38,7 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 	}
 
 	// Get event ID by request path parameter
-	id := ctx.Param("id")
+	id := ctx.Param("id") // Although it was called id, it can be either event ID or slug
 	if id == "" {
 		ctx.JSON(http.StatusBadRequest, ErrorResponse{Message: "Event ID is required"})
 		return
@@ -151,7 +47,7 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 	// Build the query URL with status fields
 	queryParams := url.Values{}
 	fields := []string{
-		"*",
+		"id", "name", "description", "address", "city", "country", "slug", "preview_image",
 		"event_schedules.id", "event_schedules.start_time", "event_schedules.end_time",
 		"event_schedules.start_checkin_time", "event_schedules.end_checkin_time",
 		"seat_zones.id", "seat_zones.description", "seat_zones.total_seats", "seat_zones.status",
@@ -161,112 +57,71 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 		"category_id.id", "category_id.name", "category_id.description", "category_id.status",
 	}
 	queryParams.Add("fields", strings.Join(fields, ","))
-	directusURL := fmt.Sprintf("%s/items/events/%s?%s", server.config.DirectusAddr, id, queryParams.Encode())
+	queryParams.Add("deep[seat_zones][filter][status][_icontains]", "published")
+	queryParams.Add("deep[tickets][filter][status][_icontains]", "published")
+	queryParams.Add("filter[category_id][status][_icontains]", "published")
+	queryParams.Add("filter[status][_icontains]", "published")
 
-	// Make request to Directus
-	var directusResult directusEventDetail
-	statusCode, err := util.MakeRequest("GET", directusURL, nil, token, &directusResult)
-	if err != nil {
-		util.LOGGER.Error("GET /api/events/:id: failed to get event from Directus", "error", err, "id", id)
-		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
-		return
-	}
+	// Check if 'id' is an actual UUID (search by ID), or a normal string (search by slug)
+	// If 'id' is an UUID, then we'll hit the single item endpoint (/items/events/:id), which is faster and cleaner
+	// If 'id' is a string (slug), then we will have to search for every event that match this slug, and get the first item,
+	// which is slower, but better SEO
+	if _, err := uuid.Parse(id); err != nil {
+		queryParams.Add("filter[slug][_icontains]", id)
+		url := fmt.Sprintf("%s/items/events?%s", server.config.DirectusAddr, queryParams.Encode())
 
-	// Check if event is published
-	if directusResult.Status != "published" {
-		ctx.JSON(http.StatusNotFound, ErrorResponse{Message: "Event not found"})
-		return
-	}
-
-	// Filter and transform the data
-	eventDetail := EventDetail{
-		ID:             directusResult.ID,
-		Name:           directusResult.Name,
-		Description:    directusResult.Description,
-		Address:        directusResult.Address,
-		City:           directusResult.City,
-		Country:        directusResult.Country,
-		Slug:           directusResult.Slug,
-		PreviewImage:   directusResult.PreviewImage,
-		Creator:        directusResult.Creator,
-		EventSchedules: directusResult.EventSchedules,
-		SeatZones:      make([]SeatZone, 0),
-		Tickets:        make([]Ticket, 0),
-	}
-
-	// Filter seat_zones - only published, and initialize seats array
-	for _, zone := range directusResult.SeatZones {
-		if zone.Status == "published" {
-			seatZone := zone.SeatZone
-			// Ensure seats is empty array, not null
-			if seatZone.Seats == nil {
-				seatZone.Seats = make([]Seat, 0)
-			}
-			eventDetail.SeatZones = append(eventDetail.SeatZones, seatZone)
+		// Make request to Directus
+		var results []db.Event
+		status, err := db.MakeRequest("GET", url, nil, token, &results)
+		if err != nil {
+			util.LOGGER.Error("GET /api/events/:id: failed to get event from Directus", "error", err, "id", id)
+			ctx.JSON(status, ErrorResponse{Message: err.Error()})
+			return
 		}
-	}
 
-	// Filter tickets - only published, and initialize ticket_selling_schedules array
-	for _, ticket := range directusResult.Tickets {
-		if ticket.Status == "published" {
-			t := ticket.Ticket
-			// Ensure ticket_selling_schedules is empty array, not null
-			if t.TicketSellingSchedules == nil {
-				t.TicketSellingSchedules = make([]TicketSellingSchedule, 0)
-			}
-			eventDetail.Tickets = append(eventDetail.Tickets, t)
+		// If empty slice -> not found
+		if len(results) == 0 {
+			ctx.JSON(http.StatusNotFound, ErrorResponse{"No event found"})
+			return
 		}
-	}
+		event := results[0]
 
-	// Handle category - only if published, otherwise return empty struct
-	if directusResult.Category.Status == "published" {
-		eventDetail.Category = directusResult.Category.Category
+		// Remap preview_image ID into a useable link
+		if event.PreviewImage != "" {
+			event.PreviewImage = util.CreateImageLink(server.config.ServerDomain, event.PreviewImage)
+		}
+
+		ctx.JSON(http.StatusOK, event)
 	} else {
-		eventDetail.Category = Category{}
-	}
+		url := fmt.Sprintf("%s/items/events/%s?%s", server.config.DirectusAddr, id, queryParams.Encode())
+		var event db.Event
+		status, err := db.MakeRequest("GET", url, nil, token, &event)
+		if err != nil {
+			util.LOGGER.Error("GET /api/events/:id: failed to get event from Directus", "error", err)
+			ctx.JSON(status, ErrorResponse{err.Error()})
+			return
+		}
 
-	// Remap preview_image ID into a useable link
-	if eventDetail.PreviewImage != "" {
-		eventDetail.PreviewImage = util.CreateImageLink(eventDetail.PreviewImage)
-	}
+		// Remap preview_image ID into a useable link
+		if event.PreviewImage != "" {
+			event.PreviewImage = util.CreateImageLink(server.config.ServerDomain, event.PreviewImage)
+		}
 
-	ctx.JSON(http.StatusOK, eventDetail)
+		ctx.JSON(http.StatusOK, event)
+	}
 }
 
 // Event minimal info for list view
 type EventInfo struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Address      string   `json:"address"`
-	City         string   `json:"city"`
-	Country      string   `json:"country"`
-	PreviewImage string   `json:"preview_image"`
-	Category     Category `json:"category"`
-	StartTime    string   `json:"start_time"` // Closest upcoming schedule time
-	BasePrice    int      `json:"base_price"` // Minimum ticket price
-}
-
-// Directus response structures for list events
-type directusEventScheduleMinimal struct {
-	StartTime string `json:"start_time"`
-}
-
-type directusTicketMinimal struct {
-	BasePrice int    `json:"base_price"`
-	Status    string `json:"status"`
-}
-
-type directusEventInfo struct {
-	ID             string                         `json:"id"`
-	Status         string                         `json:"status"`
-	Name           string                         `json:"name"`
-	Address        string                         `json:"address"`
-	City           string                         `json:"city"`
-	Country        string                         `json:"country"`
-	PreviewImage   string                         `json:"preview_image"`
-	EventSchedules []directusEventScheduleMinimal `json:"event_schedules"`
-	Tickets        []directusTicketMinimal        `json:"tickets"`
-	Category       directusCategory               `json:"category_id"`
+	ID           string      `json:"id"`
+	Name         string      `json:"name"`
+	Address      string      `json:"address"`
+	City         string      `json:"city"`
+	Country      string      `json:"country"`
+	PreviewImage string      `json:"preview_image"`
+	Category     db.Category `json:"category"`
+	StartTime    string      `json:"start_time"` // Closest upcoming schedule time
+	BasePrice    int         `json:"base_price"` // Minimum ticket price
 }
 
 // ListEvents godoc
@@ -371,8 +226,8 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 	directusURL := fmt.Sprintf("%s/items/events?%s", server.config.DirectusAddr, queryParams.Encode())
 
 	// Make request to Directus
-	var directusResult []directusEventInfo
-	statusCode, err := util.MakeRequest("GET", directusURL, nil, token, &directusResult)
+	var directusResult []db.Event
+	statusCode, err := db.MakeRequest("GET", directusURL, nil, token, &directusResult)
 	if err != nil {
 		util.LOGGER.Error("GET /api/events: failed to get events from Directus", "error", err)
 		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
@@ -383,11 +238,6 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 	events := make([]EventInfo, 0)
 
 	for _, event := range directusResult {
-		// Skip if event is not published (redundant check)
-		if event.Status != "published" {
-			continue
-		}
-
 		// Calculate base price (minimum of published tickets)
 		basePrice := 0
 		hasPublishedTickets := false
@@ -456,9 +306,9 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 		}
 
 		// Build category (only if published)
-		category := Category{}
-		if event.Category.Status == "published" {
-			category = event.Category.Category
+		category := db.Category{}
+		if event.Category != nil && event.Category.Status == "published" {
+			category = *event.Category
 		}
 
 		// Create event info
@@ -476,7 +326,7 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 
 		// Remap preview_image ID to link
 		if eventInfo.PreviewImage != "" {
-			eventInfo.PreviewImage = util.CreateImageLink(eventInfo.PreviewImage)
+			eventInfo.PreviewImage = util.CreateImageLink(server.config.ServerDomain, eventInfo.PreviewImage)
 		}
 
 		events = append(events, eventInfo)
@@ -492,7 +342,7 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 // @Tags         Events
 // @Accept       json
 // @Produce      json
-// @Success      200  {array}  Category "List of categories retrieved successfully"
+// @Success      200  {array}  db.Category "List of categories retrieved successfully"
 // @Failure      401  {object}  ErrorResponse         "Unauthorized access"
 // @Failure      500  {object}  ErrorResponse         "Internal server error"
 // @Security BearerAuth
@@ -510,12 +360,13 @@ func (server *Server) GetCategories(ctx *gin.Context) {
 	queryParams.Add("fields", "id,name,description")
 	queryParams.Add("sort", "name")
 	queryParams.Add("limit", "-1")
+	queryParams.Add("filter[status][_icontains]", "published")
 
 	directusURL := fmt.Sprintf("%s/items/categories?%s", server.config.DirectusAddr, queryParams.Encode())
 
 	// Make request to Directus
-	var categories []Category
-	statusCode, err := util.MakeRequest("GET", directusURL, nil, token, &categories)
+	var categories []db.Category
+	statusCode, err := db.MakeRequest("GET", directusURL, nil, token, &categories)
 	if err != nil {
 		util.LOGGER.Error("GET /api/events/categories: failed to get categories from Directus", "error", err)
 		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})

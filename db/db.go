@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/altipla-consulting/directus-go"
@@ -67,4 +68,10 @@ func (queries *Queries) GetCache(ctx context.Context, key string) (string, error
 
 	// If the value of the key simply don't exists, or expired
 	return "", &ErrorCacheMiss{Message: "cache miss"}
+}
+
+// Helper method: check if an error return by GetCache is a cache miss or database error
+func (queries *Queries) IsCacheMiss(err error) bool {
+	var cacheMiss *ErrorCacheMiss
+	return err != nil && errors.As(err, &cacheMiss)
 }

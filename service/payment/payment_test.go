@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 func CreatePaymentMethod(t *testing.T) *stripe.PaymentMethod {
 	// Use Stripe's test token for Visa card
 	// Other available tokens: tok_mastercard, tok_amex, tok_discover, etc.
-	paymentMethod, err := createPaymentMethodFromToken("tok_visa")
+	paymentMethod, err := CreatePaymentMethodFromToken("tok_visa")
 	require.NoError(t, err)
 	require.NotNil(t, paymentMethod)
 	return paymentMethod
@@ -49,7 +49,7 @@ func CreatePayment(t *testing.T, amount int64) *stripe.PaymentIntent {
 // Helper method: confirm a payment
 func ConfirmPayment(t *testing.T, intent *stripe.PaymentIntent, method *stripe.PaymentMethod) *stripe.PaymentIntent {
 	// Confirm payment
-	confirm, err := ConfirmPaymentIntent(intent.ID, method.ID, "https://example.com/return")
+	confirm, err := ConfirmPaymentIntent(intent.ID, method.ID)
 	require.NoError(t, err)
 	require.NotNil(t, confirm)
 	require.Equal(t, confirm.ID, intent.ID)

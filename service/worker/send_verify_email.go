@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"context"
 	"embed"
-	"errors"
 	"fmt"
 	"html/template"
-	"tekticket/db"
 	"tekticket/util"
 	"time"
 )
@@ -31,18 +29,19 @@ func (processor *RedisTaskProcessor) SendVerifyEmail(payload SendVerifyEmailPayl
 
 	// Check if the OTP already registered to avoid collisions
 	ok := false
-	var cacheMiss *db.ErrorCacheMiss
 	for !ok {
-		res, err := processor.queries.GetCache(context.Background(), otp)
-		if err != nil && !errors.As(err, &cacheMiss) {
-			return fmt.Errorf("failed to check if OTP exists in cache: %v", err)
-		}
-
-		// Check if cache miss
-		if res != "" {
-			otp = util.GenerateRandomOTP()
-		} else {
+		_, err := processor.queries.GetCache(context.Background(), otp)
+		if processor.queries.IsCacheMiss(err) {
+			// If cache miss
 			ok = true
+		} else {
+			// If cache error, return error
+			if err != nil {
+				return fmt.Errorf("failed to check if OTP exists in cache: %v", err)
+			}
+
+			// If cache hit -> OTP in used -> create new one
+			otp = util.GenerateRandomOTP()
 		}
 	}
 
