@@ -256,9 +256,12 @@ func MakeRequest(method, url string, body map[string]any, token string, result a
 	}
 
 	// Parse Directus response
-	directusResp := DirectusResp{Data: result}
-	if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
-		return http.StatusInternalServerError, err
+	if resp.StatusCode != http.StatusNoContent {
+		// Only parse if Directus actually return something
+		directusResp := DirectusResp{Data: result}
+		if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
+			return http.StatusInternalServerError, err
+		}
 	}
 
 	return resp.StatusCode, nil
