@@ -1680,7 +1680,7 @@ const docTemplate = `{
                 },
                 "discount": {
                     "description": "Directus will return a string even if they are set as decimal",
-                    "type": "string"
+                    "type": "number"
                 },
                 "early_buy_time": {
                     "type": "integer"

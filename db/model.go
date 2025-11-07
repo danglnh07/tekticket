@@ -5,8 +5,80 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 )
+
+// Implement float64 custom unmarshal JSON that handle both float and string,
+// since Directus decimal would return a string, not number
+type DecimalFloat float64
+
+func (df *DecimalFloat) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as float64 first
+	var f float64
+	if err := json.Unmarshal(data, &f); err == nil {
+		*df = DecimalFloat(f)
+		return nil
+	}
+
+	// If that fails, try as string
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+
+	// Parse string to float
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return err
+	}
+
+	*df = DecimalFloat(f)
+	return nil
+}
+
+func (df *DecimalFloat) MarshalJSON() ([]byte, error) {
+	// Convert to float64 and encode as JSON number (not string)
+	f := float64(*df)
+	return json.Marshal(f)
+}
+
+// Implement custom time.Time type since Directus will return a string for time
+type DateTime time.Time
+
+func (dt *DateTime) UnmarshalJSON(data []byte) error {
+	var (
+		datetimeStr string
+	)
+	if err := json.Unmarshal(data, &datetimeStr); err != nil {
+		return err
+	}
+
+	// Try parsing with FC3339
+	datetime, err := time.Parse(time.RFC3339, datetimeStr)
+	if err == nil {
+		*dt = DateTime(datetime)
+		return nil
+	}
+
+	// Try without timezone (assume UTC)
+	datetime, err = time.Parse("2006-01-02T15:04:05", datetimeStr)
+	if err == nil {
+		*dt = DateTime(datetime)
+		return nil
+	}
+
+	return err
+}
+
+func (dt *DateTime) MarshalJSON() ([]byte, error) {
+	t := time.Time(*dt)
+
+	// Use RFC3339 format when serializing
+	datetimeStr := t.UTC().Format(time.RFC3339)
+	return json.Marshal(datetimeStr)
+}
 
 /*
  * This file will contains all of Directus collections that are used inthe system.
@@ -45,12 +117,12 @@ type UserTelegram struct {
 
 // memberships
 type Membership struct {
-	ID           string `json:"id,omitempty"`
-	Status       string `json:"status,omitempty"`
-	Tier         string `json:"tier,omitempty"`
-	BasePoint    int    `json:"base_point,omitempty"`
-	EarlyBuyTime int    `json:"early_buy_time,omitempty"`
-	Discount     string `json:"discount,omitempty"` // Directus will return a string even if they are set as decimal
+	ID           string       `json:"id,omitempty"`
+	Status       string       `json:"status,omitempty"`
+	Tier         string       `json:"tier,omitempty"`
+	BasePoint    int          `json:"base_point,omitempty"`
+	EarlyBuyTime int          `json:"early_buy_time,omitempty"`
+	Discount     DecimalFloat `json:"discount,omitempty"` // Directus will return a string even if they are set as decimal
 }
 
 // user_membership_logs
@@ -89,11 +161,11 @@ type Event struct {
 
 // event_schedules
 type EventSchedule struct {
-	ID               string `json:"id,omitempty"`
-	StartTime        string `json:"start_time,omitempty"`
-	EndTime          string `json:"end_time,omitempty"`
-	StartCheckinTime string `json:"start_checkin_time,omitempty"`
-	EndCheckinTime   string `json:"end_checkin_time,omitempty"`
+	ID               string    `json:"id,omitempty"`
+	StartTime        *DateTime `json:"start_time,omitempty"`
+	EndTime          *DateTime `json:"end_time,omitempty"`
+	StartCheckinTime *DateTime `json:"start_checkin_time,omitempty"`
+	EndCheckinTime   *DateTime `json:"end_checkin_time,omitempty"`
 }
 
 // seat_zones
@@ -129,13 +201,13 @@ type Ticket struct {
 
 // ticket_selling_schedules
 type TicketSellingSchedule struct {
-	ID               string  `json:"id,omitempty"`
-	Total            int     `json:"total,omitempty"`
-	Avaible          int     `json:"available,omitempty"`
-	StartSellingTime string  `json:"start_selling_time,omitempty"`
-	EndSellingTime   string  `json:"end_selling_time,omitempty"`
-	Status           string  `json:"status,omitempty"`
-	Ticket           *Ticket `json:"ticket_id,omitempty"`
+	ID               string    `json:"id,omitempty"`
+	Total            int       `json:"total,omitempty"`
+	Avaible          int       `json:"available,omitempty"`
+	StartSellingTime *DateTime `json:"start_selling_time,omitempty"`
+	EndSellingTime   *DateTime `json:"end_selling_time,omitempty"`
+	Status           string    `json:"status,omitempty"`
+	Ticket           *Ticket   `json:"ticket_id,omitempty"`
 }
 
 // bookings
@@ -162,14 +234,15 @@ type BookingItem struct {
 
 // payments
 type Payment struct {
-	ID             string   `json:"id,omitempty"`
-	TransactionID  string   `json:"transaction_id,omitempty"`
-	Amount         int      `json:"amount,omitempty"`
-	PaymentGateway string   `json:"payment_gateway,omitempty"`
-	PaymentMethod  string   `json:"payment_method,omitempty"`
-	Status         string   `json:"status,omitempty"`
-	Booking        *Booking `json:"booking_id,omitempty"`
-	Refunds        []Refund `json:"refunds,omitempty"`
+	ID             string    `json:"id,omitempty"`
+	DateCreated    *DateTime `json:"date_created"`
+	TransactionID  string    `json:"transaction_id,omitempty"`
+	Amount         int       `json:"amount,omitempty"`
+	PaymentGateway string    `json:"payment_gateway,omitempty"`
+	PaymentMethod  string    `json:"payment_method,omitempty"`
+	Status         string    `json:"status,omitempty"`
+	Booking        *Booking  `json:"booking_id,omitempty"`
+	Refunds        []Refund  `json:"refunds,omitempty"`
 }
 
 // refunds
@@ -187,6 +260,32 @@ type Checkin struct {
 	CheckinDate string       `json:"date_created,omitempty"`
 	Staff       *User        `json:"staff_id,omitempty"`
 	BookingItem *BookingItem `json:"booking_item_id,omitempty"`
+}
+
+// settings
+type Setting struct {
+	ID                        string       `json:"id"`
+	Version                   string       `json:"version"`
+	InUsed                    bool         `json:"in_used"`
+	Status                    string       `json:"status"`
+	MoneyToPointRate          int          `json:"money_to_point_rate"`
+	MinEventDurationMinutes   int          `json:"min_event_duration_minutes"`
+	MinEventLeadDays          int          `json:"min_event_lead_days"`
+	MaxReservationHoldMinutes int          `json:"max_reservation_hold_minutes"`
+	MinSellingDurationMinutes int          `json:"min_selling_duration_minutes"`
+	PaymentFeePercent         DecimalFloat `json:"payment_fee_percent"`
+	MaxFullRefundHours        int          `json:"max_full_refund_hours"`
+	Email                     string       `json:"email"`                  // Platform email
+	AppPassword               string       `json:"app_password"`           // Platform email's app password
+	SecretKey                 string       `json:"secret_key"`             // Platfrom secret key
+	ResetPasswordURL          string       `json:"reset_password_url"`     // The frontend URL of the reset password page
+	CheckinURL                string       `json:"checkin_url"`            // The frontend URL of the checkin page
+	StripePublishableKey      string       `json:"stripe_publishable_key"` // Stripe publishable key
+	StripeSecretKey           string       `json:"stripe_secret_key"`      // Stripe secret key
+	AblyApiKey                string       `json:"ably_api_key"`           // Ably API key
+	TelegramBotToken          string       `json:"telegram_bot_token"`     // Telegram bot token
+	ServerDomain              string       `json:"server_domain"`          // Server domain, used for external API calling
+	MaxWorkers                int          `json:"max_workers"`            // The total of background workers running in the background
 }
 
 // Directus share structure: most directus request, if success, will return a one field: data

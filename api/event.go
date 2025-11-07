@@ -266,21 +266,10 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 			foundFutureTime := false
 
 			for _, schedule := range event.EventSchedules {
-				// Try multiple time formats
-				var scheduleTime time.Time
-				var err error
-
-				// Try RFC3339 first (with timezone)
-				scheduleTime, err = time.Parse(time.RFC3339, schedule.StartTime)
-				if err != nil {
-					// Try without timezone (assume UTC)
-					scheduleTime, err = time.Parse("2006-01-02T15:04:05", schedule.StartTime)
-					if err != nil {
-						util.LOGGER.Warn("GET /api/events: failed to parse schedule start time",
-							"time", schedule, "error", err)
-						continue
-					}
+				if schedule.StartTime == nil {
+					continue
 				}
+				scheduleTime := time.Time(*schedule.StartTime)
 
 				// Find the closest future time, or the latest past time if no future times
 				if scheduleTime.After(currentTime) {
