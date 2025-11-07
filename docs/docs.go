@@ -969,7 +969,7 @@ const docTemplate = `{
         },
         "/api/payments/method": {
             "get": {
-                "description": "Create payment method for confirm payment in Stripe. This API is solely for internal testing, not to be consumed by",
+                "description": "Create payment method for confirm payment. This API is solely for internal testing, not to be consumed by any client",
                 "consumes": [
                     "application/json"
                 ],
@@ -1632,7 +1632,7 @@ const docTemplate = `{
                 "preview_image": {
                     "type": "string"
                 },
-                "seat_zone": {
+                "seat_zones": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/db.SeatZone"

@@ -3,7 +3,6 @@ package util
 import (
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"tekticket/db"
 
@@ -22,9 +21,11 @@ type Config struct {
 	// Used to make request to Directus API that required admin access.
 	DirectusStaticToken string
 	// Since Directus also depend on Cloudinary for its cloud storage, we can't dynamically configure it
-	CloudStorageName   string // Cloudinary cloud name
-	CloudStorageKey    string // Cloudinary API key
-	CloudStorageSecret string // Cloudinary secret key
+	CloudStorageName     string // Cloudinary cloud name
+	CloudStorageKey      string // Cloudinary API key
+	CloudStorageSecret   string // Cloudinary secret key
+	DockerServerDomain   string // Use for internal service communication
+	DockerTelegramDomain string // Use for internal service communication
 
 	// Dynamic config
 	Email                string `json:"email"`                  // Platform email
@@ -36,7 +37,7 @@ type Config struct {
 	StripeSecretKey      string `json:"stripe_secret_key"`      // Stripe secret key
 	AblyApiKey           string `json:"ably_api_key"`           // Ably API key
 	TelegramBotToken     string `json:"telegram_bot_token"`     // Telegram bot token
-	ServerDomain         string `json:"server_domain"`          // Server domain, it can be Ngrok generated, or a custom domain
+	ServerDomain         string `json:"server_domain"`          // Server domain, used for external API calling
 	MaxWorkers           int    `json:"max_workers"`            // The total of background workers running in the background
 	PaymentFeePercent    string `json:"payment_fee_percent"`    // Payment fee percent. Directus will return a string if it a decimal
 }
@@ -53,12 +54,17 @@ func (config *Config) LoadStaticConfig(path string) error {
 		config.RedisAddr = os.Getenv("REDIS_ADDR")
 		config.DirectusAddr = os.Getenv("DIRECTUS_ADDR")
 		config.DirectusStaticToken = os.Getenv("DIRECTUS_STATIC_TOKEN")
+		config.DockerServerDomain = os.Getenv("DOCKER_SERVER_DOMAIN")
+		config.DockerTelegramDomain = os.Getenv("DOCKER_TELEGRAM_DOMAIN")
 		return err
 	}
 
 	config.RedisAddr = os.Getenv("REDIS_ADDR")
 	config.DirectusAddr = os.Getenv("DIRECTUS_ADDR")
 	config.DirectusStaticToken = os.Getenv("DIRECTUS_STATIC_TOKEN")
+	config.DockerServerDomain = os.Getenv("DOCKER_SERVER_DOMAIN")
+	config.DockerTelegramDomain = os.Getenv("DOCKER_TELEGRAM_DOMAIN")
+
 	return nil
 }
 
@@ -90,17 +96,6 @@ func (config *Config) LoadDynamicConfig() error {
 	config.ServerDomain = configs[0].ServerDomain
 	config.MaxWorkers = configs[0].MaxWorkers
 	config.PaymentFeePercent = configs[0].PaymentFeePercent
-
-	// Try ping to server domain, if they are running. If not, we are using the localhost domain
-	resp, err := http.Get(fmt.Sprintf("%s/api", config.ServerDomain))
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		LOGGER.Warn("Cannot ping to server domain. Using local domain instead", "domain", config.ServerDomain, "status", resp.Status)
-		config.ServerDomain = "http://localhost:8080"
-	}
 
 	return nil
 }

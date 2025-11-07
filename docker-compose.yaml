@@ -51,19 +51,14 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-  ngrok:
-    image: ngrok/ngrok:latest
-    depends_on:
-      - directus
-      - redis
-      - app
+  telegram-bot-api:
+    image: aiogram/telegram-bot-api:latest
     environment:
-      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
-    volumes:
-      - ./ngrok.yml:/etc/ngrok.yml
-    command: start --all --config /etc/ngrok.yml
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_LOCAL: "1" # This allow for HTTP, local webhook
     ports:
-      - 4040:4040
+      - "8081:8081"
   app:
     build:
       context: .

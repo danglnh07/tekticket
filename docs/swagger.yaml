@@ -316,7 +316,7 @@ definitions:
         type: string
       preview_image:
         type: string
-      seat_zone:
+      seat_zones:
         items:
           $ref: '#/definitions/db.SeatZone'
         type: array
@@ -1186,8 +1186,8 @@ paths:
     get:
       consumes:
       - application/json
-      description: Create payment method for confirm payment in Stripe. This API is
-        solely for internal testing, not to be consumed by
+      description: Create payment method for confirm payment. This API is solely for
+        internal testing, not to be consumed by any client
       produces:
       - application/json
       responses:

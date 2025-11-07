@@ -33,9 +33,9 @@ type Chatbot struct {
 }
 
 // Constructor of chatbot, which register the Telegram server domain and setting webhook
-func NewChatbot(token, webhook string) (*Chatbot, error) {
+func NewChatbot(server, webhook string) (*Chatbot, error) {
 	bot := &Chatbot{
-		server:  "https://api.telegram.org/bot" + token,
+		server:  server,
 		webhook: webhook,
 	}
 

@@ -52,7 +52,10 @@ func main() {
 	}
 	uploadService := uploader.NewUploader(cld, config)
 	mailService := notify.NewEmailService(config.Email, config.AppPassword)
-	bot, err := bot.NewChatbot(config.TelegramBotToken, fmt.Sprintf("%s/api/webhook/telegram", config.ServerDomain))
+	bot, err := bot.NewChatbot(
+		fmt.Sprintf("%s/bot%s", config.DockerTelegramDomain, config.TelegramBotToken),
+		fmt.Sprintf("%s/api/webhook/telegram", config.DockerServerDomain),
+	)
 	if err != nil {
 		util.LOGGER.Error("Failed to initialize Telegram chat bot", "error", err)
 		os.Exit(1)
