@@ -21,7 +21,7 @@ var Queues = map[string]int{
 const (
 	LOW_IMPACT    = "low"
 	MEDIUM_IMPACT = "default"
-	HIGH_IMPACT   = "high"
+	HIGH_IMPACT   = "critical"
 )
 
 func IsQueueLevelExists(queue string) bool {

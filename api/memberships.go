@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
+	// "strconv"
 	"tekticket/db"
 	"tekticket/util"
 
@@ -82,8 +82,9 @@ func (server *Server) GetUserMembership(ctx *gin.Context) {
 		if membership.BasePoint <= result.Points {
 			result.Tier = membership.Tier
 			result.EarlyBuyTime = membership.EarlyBuyTime
-			discount, _ := strconv.ParseFloat(membership.Discount, 64)
-			result.Discount = discount
+			// discount, _ := strconv.ParseFloat(membership.Discount, 64)
+			// result.Discount = discount
+			result.Discount = float64(membership.Discount)
 		} else {
 			break
 		}

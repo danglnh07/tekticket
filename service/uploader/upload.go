@@ -28,7 +28,7 @@ func (uploader *Uploader) UploadImage(ctx context.Context, image any) (int, stri
 	id := uuid.New()
 	cloudResp, err := uploader.cloudinary.UploadImage(ctx, id.String(), image)
 	if err != nil {
-		return http.StatusInternalServerError, "", nil
+		return http.StatusInternalServerError, "", err
 	}
 	util.LOGGER.Info("Upload cloudinary success", "id", id.String(), "url", cloudResp.SecureURL)
 

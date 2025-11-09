@@ -38,11 +38,20 @@ func CreatePaymentMethod(t *testing.T) *stripe.PaymentMethod {
 
 // Helper method: create a payment intent
 func CreatePayment(t *testing.T, amount int64) *stripe.PaymentIntent {
+	key := util.RandomString(6)
+
 	// Test create payment intent
-	intent, err := CreatePaymentIntent(amount, stripe.CurrencyVND)
+	intent, err := CreatePaymentIntent(amount, stripe.CurrencyVND, key)
 	require.NoError(t, err)
 	require.NotNil(t, intent)
 	util.LOGGER.Info("Transaction created", "amount", amount, "status", intent.Status)
+
+	// Try create the same intent. It should return the previous intent instead of creating a new one
+	newIntent, err := CreatePaymentIntent(amount, stripe.CurrencyVND, key)
+	require.NoError(t, err)
+	require.NotNil(t, newIntent)
+	require.Equal(t, intent.ID, newIntent.ID)
+
 	return intent
 }
 
@@ -62,6 +71,16 @@ func TestCreatePaymentIntent(t *testing.T) {
 	// Pick a random value in the valid range
 	amount := minAmount + rand.Int63n(maxAmount-minAmount+1)
 	CreatePayment(t, amount)
+}
+
+// Test cancel unpaid payment intent
+func TestCancelPaymentIntent(t *testing.T) {
+	// Pick a random value in the valid range
+	amount := minAmount + rand.Int63n(maxAmount-minAmount+1)
+	intent := CreatePayment(t, amount)
+
+	// Cancel intent
+	require.NoError(t, CancelPaymentIntent(intent.ID))
 }
 
 // Test confirm payment
@@ -103,5 +122,4 @@ func TestFullRefund(t *testing.T) {
 	require.Equal(t, intent.ID, refund.PaymentIntent.ID)
 	require.Equal(t, amount, refund.Amount)
 	util.LOGGER.Info("Full refund", "status", refund.Status)
-
 }

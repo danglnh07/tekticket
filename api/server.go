@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -100,6 +101,7 @@ func (server *Server) RegisterHandler() {
 			payments.POST("", server.CreatePayment)
 			payments.GET("/method", server.CreatePaymentMethod)
 			payments.POST("/:id/confirm", server.ConfirmPayment)
+			payments.POST("/:id/refund", server.Refund)
 		}
 
 		// Categories routes
@@ -161,7 +163,14 @@ func (server *Server) RegisterHandler() {
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			ctx.JSON(resp.StatusCode, ErrorResponse{resp.Status})
+			var errMsg db.DirectusErrorResp
+			if err := json.NewDecoder(resp.Body).Decode(&errMsg); err != nil {
+				util.LOGGER.Error("GET /images/:id: failed to read error messages", "error", err)
+				ctx.JSON(http.StatusInternalServerError, ErrorResponse{"failed to read error message"})
+				return
+			}
+			util.LOGGER.Error("GET /images:id: Directus error message", "err", errMsg)
+			ctx.JSON(resp.StatusCode, ErrorResponse{})
 			return
 		}
 

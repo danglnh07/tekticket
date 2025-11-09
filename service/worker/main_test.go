@@ -58,10 +58,12 @@ func TestMain(m *testing.M) {
 		"secret key", os.Getenv("SECRET_KEY"),
 	)
 	config := &util.Config{
-		ResetPasswordURL:    "http://localhost:3000", // Just some dump value, we only care about the token in this test
+		Setting: db.Setting{
+			ResetPasswordURL: "http://localhost:3000",
+			SecretKey:        os.Getenv("SECRET_KEY"),
+		},
 		DirectusAddr:        os.Getenv("DIRECTUS_ADDR"),
 		DirectusStaticToken: os.Getenv("DIRECTUS_STATIC_TOKEN"),
-		SecretKey:           os.Getenv("SECRET_KEY"),
 	}
 	uploadService := uploader.NewUploader(cld, config)
 

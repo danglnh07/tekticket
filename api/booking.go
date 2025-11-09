@@ -275,15 +275,7 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 	}
 	util.LOGGER.Info("POST /api/payments", "id", booking.ID, "before charged", booking.TotalPricePaid)
 
-	// Applied fee charged
-	feePercent, err := strconv.ParseFloat(server.config.PaymentFeePercent, 64)
-	if err != nil {
-		util.LOGGER.Error("POST /api/payments: failed to parse payment fee charged", "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
-		return
-	}
-
-	booking.FeeCharged = int(feePercent * float64(booking.TotalPricePaid) / 100)
+	booking.FeeCharged = int(float64(server.config.PaymentFeePercent) * float64(booking.TotalPricePaid) / 100)
 	booking.TotalPricePaid += booking.FeeCharged
 	util.LOGGER.Info("POST /api/payments", "id", booking.ID, "after charged", booking.TotalPricePaid)
 
