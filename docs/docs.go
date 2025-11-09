@@ -917,7 +917,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Creates a Stripe payment intent and records the payment information in the database for a booking.",
+                "description": "Creates a new payment intent in Stripe and records it in Directus.\nIf a ` + "`" + `payment_id` + "`" + ` is provided, retries the payment only if the existing record’s status is ` + "`" + `failed` + "`" + `.\nValidates amount range for VND, creates a Stripe payment intent with idempotency protection, and updates Directus with transaction details.",
                 "consumes": [
                     "application/json"
                 ],
@@ -927,7 +927,7 @@ const docTemplate = `{
                 "tags": [
                     "Payments"
                 ],
-                "summary": "Create a new payment",
+                "summary": "Create or retry a Stripe payment",
                 "parameters": [
                     {
                         "description": "Payment creation payload",
@@ -941,27 +941,27 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Payment created successfully",
+                        "description": "Payment intent successfully created",
                         "schema": {
                             "$ref": "#/definitions/api.CreatePaymentResponse"
                         }
                     },
                     "400": {
-                        "description": "Invalid request body",
+                        "description": "Invalid request body or parameters",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/api.CreatePaymentError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized access",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/api.CreatePaymentError"
                         }
                     },
                     "500": {
-                        "description": "Internal server error or failed to communicate with Stripe/Directus",
+                        "description": "Internal server error or failed Stripe/Directus operation",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/api.CreatePaymentError"
                         }
                     }
                 }
@@ -1053,6 +1053,73 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal server error or failed to confirm payment in Stripe/Directus",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/payments/{id}/refund": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Initiates a Stripe refund for a completed payment and records it in Directus.\nSupports both user-requested refunds (partial refund if outside the allowed time window)\nand automatic refunds (full refund, e.g., event cancellation).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Payments"
+                ],
+                "summary": "Refund a successful payment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Payment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Whether the refund is user-requested (may affect refund amount)",
+                        "name": "is_user_requested",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Refund processed successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid payment status or parameters",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized access",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Payment not found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Stripe or Directus internal error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -1239,6 +1306,17 @@ const docTemplate = `{
                 }
             }
         },
+        "api.CreatePaymentError": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "payment_id": {
+                    "type": "string"
+                }
+            }
+        },
         "api.CreatePaymentRequest": {
             "type": "object",
             "required": [
@@ -1250,6 +1328,10 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "booking_id": {
+                    "type": "string"
+                },
+                "payment_id": {
+                    "description": "This is used for retry when payment failed",
                     "type": "string"
                 }
             }
@@ -1704,6 +1786,9 @@ const docTemplate = `{
                 },
                 "booking_id": {
                     "$ref": "#/definitions/db.Booking"
+                },
+                "date_created": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "string"

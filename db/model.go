@@ -235,7 +235,7 @@ type BookingItem struct {
 // payments
 type Payment struct {
 	ID             string    `json:"id,omitempty"`
-	DateCreated    *DateTime `json:"date_created"`
+	DateCreated    *DateTime `json:"date_created,omitempty"`
 	TransactionID  string    `json:"transaction_id,omitempty"`
 	Amount         int       `json:"amount,omitempty"`
 	PaymentGateway string    `json:"payment_gateway,omitempty"`

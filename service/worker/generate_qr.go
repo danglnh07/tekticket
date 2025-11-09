@@ -39,6 +39,8 @@ func (processor *RedisTaskProcessor) PublishQRTicket(payload PublishQRTicketPayl
 		return err
 	}
 
+	util.LOGGER.Info("qr ID Directus", "task", PublishQRTicket, "id", id)
+
 	// Update booking_item with new QR
 	url := fmt.Sprintf("%s/items/booking_items/%s", processor.config.DirectusAddr, payload.BookingItemID)
 	status, err = db.MakeRequest("PATCH", url, map[string]any{"qr": id, "status": "valid"}, processor.config.DirectusStaticToken, nil)

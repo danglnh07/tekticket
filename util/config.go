@@ -45,6 +45,9 @@ func (config *Config) LoadStaticConfig(path string) error {
 		config.DirectusStaticToken = os.Getenv("DIRECTUS_STATIC_TOKEN")
 		config.DockerServerDomain = os.Getenv("DOCKER_SERVER_DOMAIN")
 		config.DockerTelegramDomain = os.Getenv("DOCKER_TELEGRAM_DOMAIN")
+		config.CloudStorageName = os.Getenv("CLOUDINARY_NAME")
+		config.CloudStorageKey = os.Getenv("CLOUDINARY_APIKEY")
+		config.CloudStorageSecret = os.Getenv("CLOUDINARY_APISECRET")
 		return err
 	}
 
@@ -53,6 +56,9 @@ func (config *Config) LoadStaticConfig(path string) error {
 	config.DirectusStaticToken = os.Getenv("DIRECTUS_STATIC_TOKEN")
 	config.DockerServerDomain = os.Getenv("DOCKER_SERVER_DOMAIN")
 	config.DockerTelegramDomain = os.Getenv("DOCKER_TELEGRAM_DOMAIN")
+	config.CloudStorageName = os.Getenv("CLOUDINARY_NAME")
+	config.CloudStorageKey = os.Getenv("CLOUDINARY_APIKEY")
+	config.CloudStorageSecret = os.Getenv("CLOUDINARY_APISECRET")
 
 	return nil
 }
