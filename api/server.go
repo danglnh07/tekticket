@@ -102,6 +102,13 @@ func (server *Server) RegisterHandler() {
 			payments.GET("/method", server.CreatePaymentMethod)
 			payments.POST("/:id/confirm", server.ConfirmPayment)
 			payments.POST("/:id/refund", server.Refund)
+			payments.POST("/:id/retry-qr-publishing", server.RetryQRPublishing)
+		}
+
+		// Checkin routes
+		checkin := api.Group("/checkins")
+		{
+			checkin.POST("", server.Checkin)
 		}
 
 		// Categories routes

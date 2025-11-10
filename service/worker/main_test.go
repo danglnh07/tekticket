@@ -139,7 +139,7 @@ func TestVerifyQRToken(t *testing.T) {
 	require.NotEmpty(t, token)
 
 	// Verify token
-	result, err := processor.(*RedisTaskProcessor).VerifyQRToken(token)
+	result, err := VerifyQRToken(token, processor.(*RedisTaskProcessor).config.SecretKey)
 	require.NoError(t, err)
 	require.Equal(t, bookingItem, result)
 }

@@ -627,6 +627,64 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/checkins": {
+            "post": {
+                "description": "Allows event staff to verify a QR token, validate the event schedule,\nand mark a ticket as checked in. Requires staff credentials and Directus authentication.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Checkin"
+                ],
+                "summary": "Check in attendee via QR code",
+                "parameters": [
+                    {
+                        "description": "Check-in request payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.CheckinRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Check-in successful",
+                        "schema": {
+                            "$ref": "#/definitions/api.SuccessMessage"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid QR code or not within check-in timeframe",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized or invalid staff role",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Booking item not found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server or Directus error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/events": {
             "get": {
                 "security": [
@@ -1127,6 +1185,67 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/payments/{id}/retry-qr-publishing": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Re-publishes QR codes for all booking items associated with a successful payment.\nUsed when QR generation failed after payment confirmation.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Payment"
+                ],
+                "summary": "Retry QR ticket publishing for a completed payment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Payment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "QR publishing retried successfully",
+                        "schema": {
+                            "$ref": "#/definitions/api.SuccessMessage"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid payment status or bad request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized access",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Payment ID not found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server or task distribution error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/profile": {
             "get": {
                 "security": [
@@ -1239,6 +1358,29 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "ticket_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.CheckinRequest": {
+            "type": "object",
+            "required": [
+                "checkin_device",
+                "staff_email",
+                "staff_password",
+                "token"
+            ],
+            "properties": {
+                "checkin_device": {
+                    "type": "string"
+                },
+                "staff_email": {
+                    "type": "string"
+                },
+                "staff_password": {
+                    "type": "string"
+                },
+                "token": {
                     "type": "string"
                 }
             }

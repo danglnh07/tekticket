@@ -411,6 +411,21 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, paymentInfo)
 }
 
+// RetryQRPublishing godoc
+// @Summary      Retry QR ticket publishing for a completed payment
+// @Description  Re-publishes QR codes for all booking items associated with a successful payment.
+// @Description  Used when QR generation failed after payment confirmation.
+// @Tags         Payment
+// @Accept       json
+// @Produce      json
+// @Param        id path string true "Payment ID"
+// @Success      200  {object}  SuccessMessage  "QR publishing retried successfully"
+// @Failure      400  {object}  ErrorResponse   "Invalid payment status or bad request"
+// @Failure      401  {object}  ErrorResponse   "Unauthorized access"
+// @Failure      404  {object}  ErrorResponse   "Payment ID not found"
+// @Failure      500  {object}  ErrorResponse   "Internal server or task distribution error"
+// @Security BearerAuth
+// @Router       /api/payments/{id}/retry-qr-publishing [post]
 func (server *Server) RetryQRPublishing(ctx *gin.Context) {
 	// Get access token
 	token := server.GetToken(ctx)

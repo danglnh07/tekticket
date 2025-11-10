@@ -29,7 +29,7 @@ func (processor *RedisTaskProcessor) generateQRToken(bookingItemID string) (stri
 	return util.Encode(string(encryption)), nil
 }
 
-func (processor *RedisTaskProcessor) VerifyQRToken(token string) (string, error) {
+func VerifyQRToken(token, secretKey string) (string, error) {
 	// Decode base64 token
 	decode, err := util.Decode(token)
 	if err != nil {
@@ -37,7 +37,7 @@ func (processor *RedisTaskProcessor) VerifyQRToken(token string) (string, error)
 	}
 
 	// Decrypt token
-	decrypt, err := util.Decrypt([]byte(processor.config.SecretKey), []byte(decode))
+	decrypt, err := util.Decrypt([]byte(secretKey), []byte(decode))
 	if err != nil {
 		return "", err
 	}
