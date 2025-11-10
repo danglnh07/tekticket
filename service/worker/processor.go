@@ -177,7 +177,7 @@ func (processor *RedisTaskProcessor) Start() error {
 			return err
 		}
 
-		err := processor.PublishQRTicket(payload)
+		err := processor.PublishQRTickets(payload)
 		if err != nil {
 			util.LOGGER.Error("failed to process task", "task", PublishQRTicket, "error", err)
 			return err

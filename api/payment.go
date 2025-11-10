@@ -260,7 +260,7 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 		return
 	}
 
-	// Check payment status
+	// Check payment status: must be in pending state
 	if paymentInfo.Status == "failed" {
 		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Payment status is 'failed', must be in pending state before confirmation"})
 		return
@@ -271,45 +271,94 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 		return
 	}
 
-	// Confirm payment
-	intent, err := payment.ConfirmPaymentIntent(req.PaymentIntentID, req.PaymentMethodID)
+	if paymentInfo.Status == "processing" {
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Payment currently processed"})
+		return
+	}
+
+	// Update payment status into processing to avoid spamming
+	_, err = server.updatePayment(token, paymentID, map[string]any{"status": "processing"})
 	if err != nil {
-		util.LOGGER.Error("POST /api/payments/:id/confirm: failed to confirm payment in Stripe", "error", err)
+		util.LOGGER.Error("POST /api/payments/:id/confirm: failed to update payment status to processing", "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
 
-	// Check payment confirm status. Unlike with create payment intent, here, confirm failed doesn't necessarily equal error
-	// for example, payment method incorrect or account does't have enough money can also lead to unsucess confirmation.
-	if intent.Status != "succeeded" {
-		// Extract meaningful error message
-		errorMsg := "Payment confirmation failed"
+	// Check if this payment actuall paid or not, since client can actually retry because of other errors
+	isSuccess, err := payment.IsPaymentIntentLastCallSuccess(req.PaymentIntentID)
+	if err != nil {
+		util.LOGGER.Error("POST /api/payments/:id/confirm: failed to check if payment intent is already paid or not", "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		return
+	}
 
-		if intent.LastPaymentError != nil {
-			switch intent.LastPaymentError.Code {
-			case stripe.ErrorCodeCardDeclined:
-				errorMsg = "Card declined. Please try a different payment method"
-			case stripe.ErrorCodeInsufficientFunds:
-				errorMsg = "Insufficient funds. Please use a different card"
-			case stripe.ErrorCodeExpiredCard:
-				errorMsg = "Card expired. Please use a different card"
-			case stripe.ErrorCodeIncorrectCVC:
-				errorMsg = "Incorrect CVC. Please check your card details"
-			case stripe.ErrorCodeProcessingError:
-				errorMsg = "Payment processing error. Please try again"
-			default:
-				errorMsg = fmt.Sprintf("Payment failed: %s", intent.LastPaymentError.Msg)
+	// If this payment is not paid, then we can try confirming payment intent
+	var body = map[string]any{} // Body for payment update
+	if !isSuccess {
+		intent, err := payment.ConfirmPaymentIntent(req.PaymentIntentID, req.PaymentMethodID)
+		if err != nil {
+			// If payment failed -> update payment status in database back to pending
+			body["status"] = "pending"
+			_, err := server.updatePayment(token, paymentID, body)
+			if err != nil {
+				util.LOGGER.Error(
+					"POST /api/payments/:id/confirm: failed to rollback payment status from processing to pending",
+					"error", err,
+				)
 			}
+
+			// Log and return error message back to client
+			util.LOGGER.Error("POST /api/payments/:id/confirm: failed to confirm payment in Stripe", "error", err)
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+			return
 		}
 
-		util.LOGGER.Warn("POST /api/payments/:id/confirm: payment not succeeded",
-			"status", intent.Status,
-			"error_code", intent.LastPaymentError.Code,
-			"error_message", intent.LastPaymentError.Msg,
-		)
+		// Check payment confirm status. Unlike with create payment intent, here, confirm failed doesn't necessarily equal error
+		// for example, payment method incorrect or account does't have enough money can also lead to unsucess confirmation.
+		if intent.Status != "succeeded" {
+			// If payment failed -> update payment status in database back to pending
+			body["status"] = "pending"
+			_, err := server.updatePayment(token, paymentID, body)
+			if err != nil {
+				util.LOGGER.Error(
+					"POST /api/payments/:id/confirm: failed to rollback payment status from processing to pending",
+					"error", err,
+				)
+			}
 
-		ctx.JSON(http.StatusPaymentRequired, ErrorResponse{errorMsg})
-		return
+			// Extract meaningful error message
+			errorMsg := "Payment confirmation failed"
+
+			if intent.LastPaymentError != nil {
+				switch intent.LastPaymentError.Code {
+				case stripe.ErrorCodeCardDeclined:
+					errorMsg = "Card declined. Please try a different payment method"
+				case stripe.ErrorCodeInsufficientFunds:
+					errorMsg = "Insufficient funds. Please use a different card"
+				case stripe.ErrorCodeExpiredCard:
+					errorMsg = "Card expired. Please use a different card"
+				case stripe.ErrorCodeIncorrectCVC:
+					errorMsg = "Incorrect CVC. Please check your card details"
+				case stripe.ErrorCodeProcessingError:
+					errorMsg = "Payment processing error. Please try again"
+				default:
+					errorMsg = fmt.Sprintf("Payment failed: %s", intent.LastPaymentError.Msg)
+				}
+			}
+
+			util.LOGGER.Warn("POST /api/payments/:id/confirm: payment not succeeded",
+				"status", intent.Status,
+				"error_code", intent.LastPaymentError.Code,
+				"error_message", intent.LastPaymentError.Msg,
+			)
+
+			ctx.JSON(http.StatusPaymentRequired, ErrorResponse{errorMsg})
+			return
+		}
+
+		// If confirmation success, add the payment method into body payload
+		body["payment_method"] = intent.PaymentMethod.Type
+		body["status"] = "success"
 	}
 
 	// Update payment with Stripe's status returned
@@ -317,83 +366,133 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 		"id", "date_created", "amount", "payment_gateway", "payment_method", "status", "booking_id.booking_items.id",
 	}
 	url = fmt.Sprintf("%s/items/payments/%s?fields=%s", server.config.DirectusAddr, paymentID, strings.Join(fields, ","))
-	status, err := db.MakeRequest(
-		"PATCH",
-		url,
-		map[string]any{
-			"payment_method": intent.PaymentMethod.Type,
-			"status":         "success",
-		},
-		token,
-		&paymentInfo,
-	)
+	status, err := db.MakeRequest("PATCH", url, body, token, &paymentInfo)
 	if err != nil {
 		util.LOGGER.Error("POST /api/payments/:id/confirm: failed to update payment record in database", "status", status, "error", err)
-
-		// Try refund
-		refund, err := payment.CreateRefund(intent.ID, payment.RequestedByCustomer, intent.Amount)
-		if err != nil || refund.Status != "succeeded" {
-			util.LOGGER.Error(
-				"POST /api/payments/:id/confirm: failed to refund",
-				"status", refund.Status,
-				"response", refund.LastResponse,
-				"error", err,
-			)
-			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Error confirm payment. Please contact customer support!"})
-			return
-		}
-
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Confirm payment failed, please retry again"})
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{
+			"confirmation success, but we hit an issue with database. Please retry again",
+		})
 		return
 	}
 
-	// Start background task: publish QR tickets
-	if paymentInfo.Booking != nil && intent.Status == "succeeded" {
-		util.LOGGER.Info("POST /api/payments/:id/confirm: start publishing QRs", "items", len(paymentInfo.Booking.BookingItems))
-		for _, item := range paymentInfo.Booking.BookingItems {
-			err := server.distributor.DistributeTask(ctx, worker.PublishQRTicket, worker.PublishQRTicketPayload{
-				BookingItemID: item.ID,
-				CheckInURL:    server.config.CheckinURL,
-			}, asynq.Queue(worker.HIGH_IMPACT), asynq.MaxRetry(5))
-
-			if err != nil {
-				util.LOGGER.Error(
-					"POST /api/payment/:id/confirm: failed to distribute task",
-					"task", worker.PublishQRTicket,
-					"booking_item_id", item.ID,
-					"error", err,
-				)
-
-				// If failed to publish ticket, we'll refund money back to user
-				refund, err := payment.CreateRefund(intent.ID, payment.RequestedByCustomer, intent.Amount)
-				if err != nil || refund.Status != "succeeded" {
-					util.LOGGER.Error(
-						"POST /api/payments/:id/confirm: failed to refund to customer after failing publishing tickets",
-						"status", refund.Status,
-						"response", refund.LastResponse,
-						"error", err,
-					)
-					ctx.JSON(http.StatusInternalServerError, ErrorResponse{
-						"Payment success, but failed to publish tickets! We try to refund but failed again. Please contact the admin",
-					})
-					return
-				}
-
-				ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error. Please try again"})
-				return
-			}
-		}
-	} else if intent.Status != "succeeded" {
-		util.LOGGER.Warn("POST /api/payments/:id/confirm: confirm payment failed, skip QR publishing", "status", intent.Status)
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Payment confirmation failed"})
-		return
-	} else {
+	// Check if Booking of payment info is nil, just in case, to avoid nil pointer dereference
+	if paymentInfo.Booking == nil {
 		util.LOGGER.Error("POST /api/payments/:id/confirm: booking is nil")
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
 
+	util.LOGGER.Info("POST /api/payments/:id/confirm: start publishing QRs", "items", len(paymentInfo.Booking.BookingItems))
+
+	// Build the booking_item_id slice for task distributing
+	ids := make([]string, len(paymentInfo.Booking.BookingItems))
+	for i, item := range paymentInfo.Booking.BookingItems {
+		ids[i] = item.ID
+	}
+
+	// Distibute background task: publishing QR tickets
+	err = server.distributor.DistributeTask(
+		ctx,
+		worker.PublishQRTicket,
+		worker.PublishQRTicketPayload{
+			BookingItemIDs: ids,
+			CheckInURL:     server.config.CheckinURL,
+		},
+		asynq.Queue(worker.HIGH_IMPACT),
+		asynq.MaxRetry(5),
+	)
+
+	if err != nil {
+		util.LOGGER.Error("POST /api/payment/:id/confirm: failed to distribute task", "task", worker.PublishQRTicket, "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Payment confirmation success, but failed to publish QR"})
+		return
+	}
+
 	ctx.JSON(http.StatusOK, paymentInfo)
+}
+
+// RetryQRPublishing godoc
+// @Summary      Retry QR ticket publishing for a completed payment
+// @Description  Re-publishes QR codes for all booking items associated with a successful payment.
+// @Description  Used when QR generation failed after payment confirmation.
+// @Tags         Payment
+// @Accept       json
+// @Produce      json
+// @Param        id path string true "Payment ID"
+// @Success      200  {object}  SuccessMessage  "QR publishing retried successfully"
+// @Failure      400  {object}  ErrorResponse   "Invalid payment status or bad request"
+// @Failure      401  {object}  ErrorResponse   "Unauthorized access"
+// @Failure      404  {object}  ErrorResponse   "Payment ID not found"
+// @Failure      500  {object}  ErrorResponse   "Internal server or task distribution error"
+// @Security BearerAuth
+// @Router       /api/payments/{id}/retry-qr-publishing [post]
+func (server *Server) RetryQRPublishing(ctx *gin.Context) {
+	// Get access token
+	token := server.GetToken(ctx)
+	if token == "" {
+		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
+		return
+	}
+
+	// Get request body
+	var req ConfirmPaymentRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		util.LOGGER.Error("POST /api/payments/:id/confirm: failed to parse request body", "error", err)
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid request body"})
+		return
+	}
+
+	// Check if payment ID exists and payment status must be success before processing
+	paymentID := ctx.Param("id")
+	url := fmt.Sprintf("%s/items/payments/%s?fields=id,status", server.config.DirectusAddr, paymentID)
+	var paymentInfo db.Payment
+	statusCode, err := db.MakeRequest("GET", url, nil, token, &paymentInfo)
+	if err != nil {
+		util.LOGGER.Error("POST /api/payments/:id/confirm: failed to check if payment ID exists and valid", "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		return
+	}
+
+	// Check if payment exists
+	if statusCode == http.StatusNotFound {
+		util.LOGGER.Warn("POST /api/payments/:id/confirm: payment ID not exists")
+		ctx.JSON(http.StatusNotFound, ErrorResponse{"Invalid payment ID, payment ID not exists"})
+		return
+	}
+
+	// Check payment status: must be in success state.
+	// Since if QR publishing failed, then all other operation must succeed before, so its status must be success
+	if paymentInfo.Status != "success" {
+		util.LOGGER.Warn("POST /api/payments/:id/retry-qr-publishing: payment status not success", "status", paymentInfo.Status)
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid payment status, its must be success for QR publishing"})
+		return
+	}
+
+	// Build the booking_item_id slice for task distributing
+	ids := make([]string, len(paymentInfo.Booking.BookingItems))
+	for i, item := range paymentInfo.Booking.BookingItems {
+		ids[i] = item.ID
+	}
+
+	// Distibute background task: publishing QR tickets
+	err = server.distributor.DistributeTask(
+		ctx,
+		worker.PublishQRTicket,
+		worker.PublishQRTicketPayload{
+			BookingItemIDs: ids,
+			CheckInURL:     server.config.CheckinURL,
+		},
+		asynq.Queue(worker.HIGH_IMPACT),
+		asynq.MaxRetry(5),
+	)
+
+	if err != nil {
+		util.LOGGER.Error("POST /api/payment/:id/confirm: failed to distribute task", "task", worker.PublishQRTicket, "error", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Payment confirmation success, but failed to publish QR"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, SuccessMessage{"QR publishing!"})
 }
 
 // Refund godoc

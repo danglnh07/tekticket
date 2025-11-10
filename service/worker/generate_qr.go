@@ -3,47 +3,134 @@ package worker
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"strings"
+	"sync"
 	"tekticket/db"
 	"tekticket/util"
 )
 
 type PublishQRTicketPayload struct {
-	BookingItemID string `json:"booking_item_id"`
-	CheckInURL    string `json:"checkin_url"`
+	BookingItemIDs []string `json:"booking_item_ids"`
+	CheckInURL     string   `json:"checkin_url"`
 }
 
 const PublishQRTicket = "publish-qr-ticket"
 
-func (processor *RedisTaskProcessor) PublishQRTicket(payload PublishQRTicketPayload) error {
+func (processor *RedisTaskProcessor) generateQRToken(bookingItemID string) (string, error) {
 	// Generate token: encrypt AES booking_item_id
-	encryption, err := util.Encrypt([]byte(processor.config.SecretKey), []byte(payload.BookingItemID))
+	encryption, err := util.Encrypt([]byte(processor.config.SecretKey), []byte(bookingItemID))
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	// Append the token into checkinURL
-	payload.CheckInURL += "?token=" + util.Encode(string(encryption))
-	util.LOGGER.Info("Check in URL with token parameter", "task", PublishQRTicket, "checkin_url", payload.CheckInURL)
+	// Encode token into base64 URL-safe
+	return util.Encode(string(encryption)), nil
+}
 
-	// Decode into QR
-	qr, err := util.GenerateQR(payload.CheckInURL)
+func VerifyQRToken(token, secretKey string) (string, error) {
+	// Decode base64 token
+	decode, err := util.Decode(token)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	// Upload image into cloudinary and directus
-	status, id, err := processor.uploadService.UploadImage(context.Background(), bytes.NewReader(qr))
+	// Decrypt token
+	decrypt, err := util.Decrypt([]byte(secretKey), []byte(decode))
 	if err != nil {
-		util.LOGGER.Error("failed to upload QR", "task", PublishQRTicket, "status", status, "error", err)
-		return err
+		return "", err
 	}
 
-	util.LOGGER.Info("qr ID Directus", "task", PublishQRTicket, "id", id)
+	return string(decrypt), nil
+}
 
-	// Update booking_item with new QR
-	url := fmt.Sprintf("%s/items/booking_items/%s", processor.config.DirectusAddr, payload.BookingItemID)
-	status, err = db.MakeRequest("PATCH", url, map[string]any{"qr": id, "status": "valid"}, processor.config.DirectusStaticToken, nil)
+func (processor *RedisTaskProcessor) PublishQRTickets(payload PublishQRTicketPayload) error {
+	// Since cloudinary and directus doesn't support batch images upload, we're gonna use goroutine here.
+	// While update record is allow for batch update, so we'll only update them at one
+
+	var (
+		wg        = sync.WaitGroup{}
+		mutex     = sync.Mutex{}
+		qrMapping = map[string]string{}
+		errs      = make(chan error, len(payload.BookingItemIDs))
+	)
+
+	for _, bookingItem := range payload.BookingItemIDs {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+
+			// Generate token
+			token, err := processor.generateQRToken(id)
+			if err != nil {
+				// Pour the error into errs channel
+				util.LOGGER.Error("failed to generate QR token", "task", PublishQRTicket, "booking_item_id", bookingItem, "error", err)
+				errs <- err
+				return
+			}
+
+			// Create checkin URL
+			checkinURL := fmt.Sprintf("%s?token=%s", payload.CheckInURL, token)
+
+			// Generate QR
+			qr, err := util.GenerateQR(checkinURL)
+			if err != nil {
+				util.LOGGER.Error("failed to generate QR", "task", PublishQRTicket, "booking_item_id", bookingItem, "error", err)
+				errs <- err
+				return
+			}
+
+			// Upload image
+			status, respID, err := processor.uploadService.UploadImage(context.Background(), bytes.NewReader(qr))
+			if err != nil {
+				util.LOGGER.Error(
+					"failed to upload QR into cloudinary",
+					"task", PublishQRTicket,
+					"booking_item_id", bookingItem,
+					"status", status,
+					"error", err,
+				)
+				errs <- err
+				return
+			}
+
+			// Record the mapping payload into the map
+			mutex.Lock()
+			qrMapping[bookingItem] = respID
+			mutex.Unlock()
+		}(bookingItem)
+	}
+
+	wg.Wait()
+
+	// Check for any error
+	close(errs)
+	var errorList []error
+	for err := range errs {
+		errorList = append(errorList, err)
+	}
+
+	if len(errorList) > 0 {
+		// Build the error message
+		errMsg := strings.Builder{}
+		for _, err := range errorList {
+			errMsg.WriteString(err.Error() + "\n")
+		}
+		return errors.New(errMsg.String())
+	}
+
+	// Update booking_item with new QRs and status
+	url := fmt.Sprintf("%s/items/booking_items", processor.config.DirectusAddr)
+	body := []map[string]any{}
+	for bookingItemID, mappingData := range qrMapping {
+		body = append(body, map[string]any{
+			"id":     bookingItemID,
+			"qr":     mappingData,
+			"status": "valid",
+		})
+	}
+	status, err := db.MakeRequest("PATCH", url, body, processor.config.DirectusStaticToken, nil)
 	if err != nil {
 		util.LOGGER.Error("failed to update booking_item with QR and status", "task", PublishQRTicket, "status", status, "error", err)
 		return err

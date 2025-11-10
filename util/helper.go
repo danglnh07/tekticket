@@ -10,8 +10,10 @@ import (
 	"io"
 	"log/slog"
 	"math/rand"
+	"net/http"
 	"os"
 	"strings"
+	"tekticket/db"
 
 	"github.com/skip2/go-qrcode"
 )
@@ -140,4 +142,42 @@ func ExtractIDFromToken(token string) (string, error) {
 	}
 
 	return "", fmt.Errorf("failed to parse ID")
+}
+
+// Helper method: extract role from access token
+func ExtractRoleFromToken(token, directusAddr, staticAccessToken string) (string, error) {
+	// Decode base64 token to get the JWT payload
+	jwtPayload, err := base64.RawURLEncoding.DecodeString(strings.Split(token, ".")[1])
+	if err != nil {
+		return "", err
+	}
+
+	// If decode success, try unmarshal payload to get user ID
+	var tokenPayload map[string]any
+	if err := json.Unmarshal(jwtPayload, &tokenPayload); err != nil {
+		return "", err
+	}
+
+	// Try parsing role ID from map (avoid panic error)
+	var (
+		roleID string
+		ok     bool
+	)
+	if roleID, ok = tokenPayload["id"].(string); !ok {
+		return "", fmt.Errorf("failed to parse role ID from access token")
+	}
+
+	// Make request to Directus to get the role name
+	url := fmt.Sprintf("%s/roles/%s?fields=id,name,description", directusAddr, roleID)
+	var role db.Role
+	status, err := db.MakeRequest("GET", url, nil, staticAccessToken, &role)
+	if err != nil {
+		return "", err
+	}
+
+	if status != http.StatusOK {
+		return "", fmt.Errorf("failed to get role with this ID: %s", roleID)
+	}
+
+	return role.Name, nil
 }

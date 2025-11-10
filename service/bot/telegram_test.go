@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 	util.LOGGER.Info("Bot info", "token", token, "webhook", webhook)
 
 	// Initialize chatbot
-	bot, err = NewChatbot(token, webhook)
+	bot, err = NewChatbot(fmt.Sprintf("http://localhost:8081/bot%s", token), webhook)
 	if err != nil {
 		util.LOGGER.Error("Failed to initialize chatbot", "error", err)
 		os.Exit(1)

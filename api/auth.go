@@ -4,12 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"tekticket/db"
 	"tekticket/service/worker"
 	"tekticket/util"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hibiken/asynq"
@@ -427,40 +425,16 @@ func (server *Server) ResetPassword(ctx *gin.Context) {
 		return
 	}
 
-	// Check if the token is correct
-	decodeToken, err := util.Decode(req.Token)
+	// Verify token
+	payload, err := worker.VerifyResetPasswordToken(req.Token, server.config.SecretKey)
 	if err != nil {
-		util.LOGGER.Error("POST /api/auth/password/reset: failed to decode token", "error", err)
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Bad request, token invalid"})
-	}
-	token, err := util.Decrypt([]byte(server.config.SecretKey), []byte(decodeToken))
-	if err != nil {
-		util.LOGGER.Error("POST /api/auth/password/reset: failed to decrypt token", "error", err)
+		util.LOGGER.Error("POST /api/auth/password/reset: failed to verify token", "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
 
-	segments := strings.Split(string(token), "#")
-	if len(segments) != 3 {
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid token"})
-		return
-	}
-
-	// Check if token has expired or not
-	timestamp, err := strconv.ParseInt(segments[2], 10, 64)
-	if err != nil {
-		util.LOGGER.Error("POST /api/auth/password/reset: failed to parse timestamp", "error", err)
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid token"})
-		return
-	}
-
-	if time.Now().After(time.Unix(0, int64(timestamp)).Add(time.Hour)) {
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Token expired"})
-		return
-	}
-
 	// Update password
-	url := fmt.Sprintf("%s/users/%s", server.config.DirectusAddr, segments[0])
+	url := fmt.Sprintf("%s/users/%s", server.config.DirectusAddr, payload[0])
 	status, err := db.MakeRequest("PATCH", url, map[string]any{"password": req.NewPassword}, server.config.DirectusStaticToken, nil)
 	if err != nil {
 		util.LOGGER.Error("POST /api/auth/password/reset: failed to make request to Directus", "error", err)
