@@ -12,8 +12,10 @@ import (
 	"tekticket/util"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -39,11 +41,6 @@ func TestMain(m *testing.M) {
 	}
 
 	mailService := notify.NewEmailService(os.Getenv("EMAIL"), os.Getenv("APP_PASSWORD"))
-	ablyService, err := notify.NewAblyService(os.Getenv("ABLY_API_KEY"))
-	if err != nil {
-		util.LOGGER.Error("failed to create ably service for test", "error", err)
-		os.Exit(1)
-	}
 	bot, err := bot.NewChatbot(os.Getenv("TELEGRAM_BOT_TOKEN"), fmt.Sprintf("%s/api/webhook/telegram", os.Getenv("SERVER_DOMAIN")))
 
 	cld, err := uploader.NewCld(os.Getenv("CLOUDINARY_NAME"), os.Getenv("CLOUDINARY_APIKEY"), os.Getenv("CLOUDINARY_APISECRET"))
@@ -72,10 +69,77 @@ func TestMain(m *testing.M) {
 		queries,
 		mailService,
 		uploadService,
-		ablyService,
+		nil,
 		bot,
 		config,
 	)
 
 	os.Exit(m.Run())
+}
+
+// Test: send verify email with random OTP
+func TestSendVerifyEmail(t *testing.T) {
+	// Send email
+	err := processor.(*RedisTaskProcessor).SendVerifyEmail(SendVerifyEmailPayload{
+		ID:       util.RandomString(12),
+		Email:    os.Getenv("RECEIVE_EMAIL"),
+		Username: util.RandomString(10),
+		OTP:      util.GenerateRandomOTP(),
+	})
+	require.NoError(t, err)
+}
+
+// Test: generate token for reset password.
+func TestGenerateResetPasswordToken(t *testing.T) {
+	// Generate random test data
+	id := uuid.New().String()
+	email := util.RandomString(12)
+	token, err := processor.(*RedisTaskProcessor).generateResetPasswordToken(id, email)
+	require.NoError(t, err)
+	require.NotEmpty(t, token)
+}
+
+// Test: verify reset password token
+func TestVerifyResetPasswordToken(t *testing.T) {
+	// Generate random test data
+	id := uuid.New().String()
+	email := util.RandomString(12)
+
+	// Generate token
+	token, err := processor.(*RedisTaskProcessor).generateResetPasswordToken(id, email)
+	require.NoError(t, err)
+	require.NotEmpty(t, token)
+
+	//  Verify token
+	payload, err := VerifyResetPasswordToken(token, processor.(*RedisTaskProcessor).config.SecretKey)
+	require.NoError(t, err)
+	require.Equal(t, id, payload[0])
+	require.Equal(t, email, payload[1])
+}
+
+// Test: generate QR token for checkin
+func TestGenerateQRToken(t *testing.T) {
+	// Generate random test data
+	bookingItem := uuid.New().String()
+
+	// Generate token
+	token, err := processor.(*RedisTaskProcessor).generateQRToken(bookingItem)
+	require.NoError(t, err)
+	require.NotEmpty(t, token)
+}
+
+// Test: verify QR token
+func TestVerifyQRToken(t *testing.T) {
+	// Generate random test data
+	bookingItem := uuid.New().String()
+
+	// Generate token
+	token, err := processor.(*RedisTaskProcessor).generateQRToken(bookingItem)
+	require.NoError(t, err)
+	require.NotEmpty(t, token)
+
+	// Verify token
+	result, err := processor.(*RedisTaskProcessor).VerifyQRToken(token)
+	require.NoError(t, err)
+	require.Equal(t, bookingItem, result)
 }

@@ -307,7 +307,7 @@ type DirectusErrorResp struct {
 	Errors []DirectusErrorBody `json:"errors"`
 }
 
-func MakeRequest(method, url string, body map[string]any, token string, result any) (int, error) {
+func MakeRequest(method, url string, body any, token string, result any) (int, error) {
 	var (
 		req *http.Request
 		err error
