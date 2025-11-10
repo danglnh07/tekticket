@@ -1,8 +1,6 @@
 package payment
 
 import (
-	"context"
-
 	"github.com/stripe/stripe-go/v82"
 	"github.com/stripe/stripe-go/v82/paymentintent"
 	"github.com/stripe/stripe-go/v82/paymentmethod"
