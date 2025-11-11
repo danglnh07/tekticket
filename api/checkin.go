@@ -37,7 +37,7 @@ func (server *Server) Checkin(ctx *gin.Context) {
 	// Get and parse request
 	var req CheckinRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		util.LOGGER.Error("POST /api/checkins: failed to parse request body", "error", err)
+		util.LOGGER.Warn("POST /api/checkins: failed to parse request body", "error", err)
 		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid request body"})
 		return
 	}
@@ -58,7 +58,7 @@ func (server *Server) Checkin(ctx *gin.Context) {
 
 	if err != nil {
 		util.LOGGER.Error("POST /api/checkins: failed to check staff credential", "status", status, "error", err)
-		ctx.JSON(status, ErrorResponse{err.Error()})
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
 
@@ -80,7 +80,7 @@ func (server *Server) Checkin(ctx *gin.Context) {
 
 	if role = strings.ToLower(strings.TrimSpace(role)); role != "staff" {
 		util.LOGGER.Warn("POST /api/checkins: invalid role", "role", role)
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"You don't have permission to perform this request"})
+		ctx.JSON(http.StatusForbidden, ErrorResponse{"You don't have permission to perform this request"})
 		return
 	}
 
@@ -105,26 +105,45 @@ func (server *Server) Checkin(ctx *gin.Context) {
 		return
 	}
 
-	if status == http.StatusNotFound {
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid token, booking item not found"})
+	// Check if this is in the checkin time frame
+	now := time.Now()
+	if bookingItem.EventSchedule == nil {
+		util.LOGGER.Error("POST /api/checkins: event schedule of booking item is nil")
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		return
 	}
 
-	// Check if this is in the checkin time frame
-	now := time.Now()
-	if bookingItem.EventSchedule != nil &&
-		bookingItem.EventSchedule.StartCheckinTime != nil &&
-		bookingItem.EventSchedule.EndCheckinTime != nil &&
-		now.After(time.Time(*bookingItem.EventSchedule.StartCheckinTime)) &&
-		now.Before(time.Time(*bookingItem.EventSchedule.EndCheckinTime)) {
+	if bookingItem.EventSchedule.StartCheckinTime == nil {
+		util.LOGGER.Error("POST /api/checkins: start checkin time is nil")
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		return
+	}
 
+	if bookingItem.EventSchedule.EndCheckinTime == nil {
+		util.LOGGER.Error("POST /api/checkins: end checkin time is nil")
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		return
+	}
+
+	startCheckinTime := time.Time(*bookingItem.EventSchedule.StartCheckinTime)
+	if now.Before(startCheckinTime) {
 		util.LOGGER.Warn(
-			"POST /api/checkins: not checkin time",
+			"POST /api/checkins: current time is before start checkin time",
 			"now", now.String(),
-			"start_checkin_time", time.Time(*bookingItem.EventSchedule.StartCheckinTime).String(),
-			"end_checkin_time", time.Time(*bookingItem.EventSchedule.EndCheckinTime).String(),
+			"start_checkin_time", startCheckinTime.String(),
 		)
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Not checkin time"})
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Checkin time not started yet"})
+		return
+	}
+
+	endCheckinTime := time.Time(*bookingItem.EventSchedule.EndCheckinTime)
+	if now.After(endCheckinTime) {
+		util.LOGGER.Warn(
+			"POST /api/checkins: now has passed checkin time",
+			"now", now.String(),
+			"end_checkin_time", endCheckinTime.String(),
+		)
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Checkin time has ended"})
 		return
 	}
 
@@ -145,7 +164,7 @@ func (server *Server) Checkin(ctx *gin.Context) {
 	status, err = db.MakeRequest("POST", url, body, loginResp.AccessToken, nil)
 	if err != nil {
 		util.LOGGER.Error("POST /api/checkins: failed to create checkin record in database", "status", status, "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		server.DirectusError(ctx, err)
 		return
 	}
 

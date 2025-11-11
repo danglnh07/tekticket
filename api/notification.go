@@ -19,7 +19,7 @@ func (server *Server) TelegramWebhook(ctx *gin.Context) {
 	// Get the update request
 	var req bot.TelegramUpdate
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		util.LOGGER.Error("POST /api/webhook/telegram: failed to parse incoming request", "error", err)
+		util.LOGGER.Warn("POST /api/webhook/telegram: failed to parse incoming request", "error", err)
 		return
 	}
 
@@ -69,9 +69,13 @@ func (server *Server) TelegramWebhook(ctx *gin.Context) {
 			// so we'll try to make a request to Directus to check
 			var userTelegram []db.UserTelegram
 			url := fmt.Sprintf("%s/items/user_telegrams?fields=*&filter[telegram_chat_id][_eq]=%d", server.config.DirectusAddr, chatID)
-			_, err := db.MakeRequest("GET", url, nil, server.config.DirectusStaticToken, &userTelegram)
+			status, err := db.MakeRequest("GET", url, nil, server.config.DirectusStaticToken, &userTelegram)
 			if err != nil {
-				util.LOGGER.Error("POST /api/webhook/telegram: failed to check if this chat ID has been registered", "error", err)
+				util.LOGGER.Error(
+					"POST /api/webhook/telegram: failed to check if this chat ID has been registered",
+					"status", status,
+					"error", err,
+				)
 				err = server.bot.SendMessage(chatID, util.FormatWarningHTML("Internal server error! Please try again"))
 				if err != nil {
 					util.LOGGER.Error("POST /api/webhook/telegram: failed to send message", "error", err)
@@ -104,9 +108,13 @@ func (server *Server) TelegramWebhook(ctx *gin.Context) {
 			segments[2],
 		)
 
-		_, err := db.MakeRequest("GET", url, nil, server.config.DirectusStaticToken, &users)
+		status, err := db.MakeRequest("GET", url, nil, server.config.DirectusStaticToken, &users)
 		if err != nil {
-			util.LOGGER.Error("POST /api/webhook/telegram: failed to get the list of all users with provided email", "error", err)
+			util.LOGGER.Error(
+				"POST /api/webhook/telegram: failed to get the list of all users with provided email",
+				"status", status,
+				"error", err,
+			)
 			err = server.bot.SendMessage(chatID, util.FormatWarningHTML("Internal server error! Please try again"))
 			if err != nil {
 				util.LOGGER.Error("POST /api/webhook/telegram: failed to send message", "error", err)
@@ -126,13 +134,17 @@ func (server *Server) TelegramWebhook(ctx *gin.Context) {
 
 		// If exists, we add new entry to the user_telegram collections
 		url = fmt.Sprintf("%s/items/user_telegrams", server.config.DirectusAddr)
-		_, err = db.MakeRequest("POST", url, map[string]any{
+		status, err = db.MakeRequest("POST", url, map[string]any{
 			"telegram_chat_id": fmt.Sprintf("%d", req.Message.Chat.ID),
 			"user_id":          users[0].ID,
 		}, server.config.DirectusStaticToken, nil)
 
 		if err != nil {
-			util.LOGGER.Error("POST /api/webhook/telegram: failed to create instance in user_telegram collection", "error", err)
+			util.LOGGER.Error(
+				"POST /api/webhook/telegram: failed to create instance in user_telegram collection",
+				"status", status,
+				"error", err,
+			)
 			err = server.bot.SendMessage(chatID, util.FormatWarningHTML("Internal server error! Please try again"))
 			if err != nil {
 				util.LOGGER.Error("POST /api/webhook/telegram: failed to send message", "error", err)

@@ -30,10 +30,6 @@ import (
 func (server *Server) ListBookingHistory(ctx *gin.Context) {
 	// Get access token
 	token := server.GetToken(ctx)
-	if token == "" {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
-		return
-	}
 
 	// Get user ID from access token
 	id, err := util.ExtractIDFromToken(token)
@@ -81,14 +77,14 @@ func (server *Server) ListBookingHistory(ctx *gin.Context) {
 	queryParams.Add("sort", sort)
 
 	// Build the URL
-	directusURL := fmt.Sprintf("%s/items/bookings?%s", server.config.DirectusAddr, queryParams.Encode())
+	url := fmt.Sprintf("%s/items/bookings?%s", server.config.DirectusAddr, queryParams.Encode())
 
 	// Make request to Directus
 	var results []db.Booking
-	status, err := db.MakeRequest("GET", directusURL, nil, token, &results)
+	status, err := db.MakeRequest("GET", url, nil, token, &results)
 	if err != nil {
-		util.LOGGER.Error("GET /api/bookings/:id: failed to get booking history from Directus", "error", err)
-		ctx.JSON(status, ErrorResponse{Message: err.Error()})
+		util.LOGGER.Error("GET /api/bookings/:id: failed to get booking history", "status", status, "error", err)
+		server.DirectusError(ctx, err)
 		return
 	}
 
@@ -119,10 +115,6 @@ func (server *Server) ListBookingHistory(ctx *gin.Context) {
 func (server *Server) GetBooking(ctx *gin.Context) {
 	// Get access token
 	token := server.GetToken(ctx)
-	if token == "" {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
-		return
-	}
 
 	// Get booking ID from path paramter
 	id := ctx.Param("id")
@@ -145,8 +137,8 @@ func (server *Server) GetBooking(ctx *gin.Context) {
 	var result db.Booking
 	status, err := db.MakeRequest("GET", url, nil, token, &result)
 	if err != nil {
-		util.LOGGER.Error("GET /api/bookings/:id: failed to get booking detail from Directus", "error", err, "id", id)
-		ctx.JSON(status, ErrorResponse{Message: err.Error()})
+		util.LOGGER.Error("GET /api/bookings/:id: failed to get booking detail from Directus", "status", status, "error", err, "id", id)
+		server.DirectusError(ctx, err)
 		return
 	}
 
@@ -158,7 +150,6 @@ func (server *Server) GetBooking(ctx *gin.Context) {
 	for i, ticket := range result.BookingItems {
 		if ticket.QR != "" {
 			result.BookingItems[i].QR = util.CreateImageLink(server.config.ServerDomain, ticket.QR)
-
 		}
 	}
 
@@ -202,10 +193,6 @@ type CreateBookingResponse struct {
 func (server *Server) CreateBooking(ctx *gin.Context) {
 	// Get access token and extract user
 	token := server.GetToken(ctx)
-	if token == "" {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{Message: "Unauthorized access"})
-		return
-	}
 
 	// Extract user ID from token
 	userID, err := util.ExtractIDFromToken(token)
@@ -218,6 +205,7 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 	// Parse request
 	var req CreateBookingRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
+		util.LOGGER.Warn("POST /api/bookings: failed to bind request body", "error", err)
 		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid request body"})
 		return
 	}
@@ -249,10 +237,10 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 	}
 	url := fmt.Sprintf("%s/items/bookings?fields=%s", server.config.DirectusAddr, strings.Join(fields, ","))
 	var result db.Booking
-	statusCode, err := db.MakeRequest("POST", url, payload, token, &result)
+	status, err := db.MakeRequest("POST", url, payload, token, &result)
 	if err != nil {
-		util.LOGGER.Error("POST /api/bookings: failed to create booking", "error", err)
-		ctx.JSON(statusCode, ErrorResponse{err.Error()})
+		util.LOGGER.Error("POST /api/bookings: failed to create booking", "status", status, "error", err)
+		server.DirectusError(ctx, err)
 		return
 	}
 
@@ -273,11 +261,12 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 	for _, item := range result.BookingItems {
 		booking.TotalPricePaid += item.Price
 	}
-	util.LOGGER.Info("POST /api/payments", "id", booking.ID, "before charged", booking.TotalPricePaid)
+	util.LOGGER.Info("POST /api/bookings: total amount before charged", "id", booking.ID, "amount", booking.TotalPricePaid)
 
+	// Applying additional charged
 	booking.FeeCharged = int(float64(server.config.PaymentFeePercent) * float64(booking.TotalPricePaid) / 100)
 	booking.TotalPricePaid += booking.FeeCharged
-	util.LOGGER.Info("POST /api/payments", "id", booking.ID, "after charged", booking.TotalPricePaid)
+	util.LOGGER.Info("POST /api/bookings: total amount after charging fee", "id", booking.ID, "amount", booking.TotalPricePaid)
 
 	ctx.JSON(http.StatusOK, booking)
 }

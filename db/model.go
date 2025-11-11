@@ -1,88 +1,8 @@
 package db
 
-import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"strconv"
-	"strings"
-	"time"
-)
-
-// Implement float64 custom unmarshal JSON that handle both float and string,
-// since Directus decimal would return a string, not number
-type DecimalFloat float64
-
-func (df *DecimalFloat) UnmarshalJSON(data []byte) error {
-	// Try to unmarshal as float64 first
-	var f float64
-	if err := json.Unmarshal(data, &f); err == nil {
-		*df = DecimalFloat(f)
-		return nil
-	}
-
-	// If that fails, try as string
-	var s string
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-
-	// Parse string to float
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return err
-	}
-
-	*df = DecimalFloat(f)
-	return nil
-}
-
-func (df *DecimalFloat) MarshalJSON() ([]byte, error) {
-	// Convert to float64 and encode as JSON number (not string)
-	f := float64(*df)
-	return json.Marshal(f)
-}
-
-// Implement custom time.Time type since Directus will return a string for time
-type DateTime time.Time
-
-func (dt *DateTime) UnmarshalJSON(data []byte) error {
-	var (
-		datetimeStr string
-	)
-	if err := json.Unmarshal(data, &datetimeStr); err != nil {
-		return err
-	}
-
-	// Try parsing with FC3339
-	datetime, err := time.Parse(time.RFC3339, datetimeStr)
-	if err == nil {
-		*dt = DateTime(datetime)
-		return nil
-	}
-
-	// Try without timezone (assume UTC)
-	datetime, err = time.Parse("2006-01-02T15:04:05", datetimeStr)
-	if err == nil {
-		*dt = DateTime(datetime)
-		return nil
-	}
-
-	return err
-}
-
-func (dt *DateTime) MarshalJSON() ([]byte, error) {
-	t := time.Time(*dt)
-
-	// Use RFC3339 format when serializing
-	datetimeStr := t.UTC().Format(time.RFC3339)
-	return json.Marshal(datetimeStr)
-}
-
 /*
- * This file will contains all of Directus collections that are used inthe system.
- * Note that not all fields are included, since this application is only for customer
+ * This file will contains all of Directus collections that are used.
+ * Note that not all models and fields are included
  */
 
 // directus_roles
@@ -122,7 +42,7 @@ type Membership struct {
 	Tier         string       `json:"tier,omitempty"`
 	BasePoint    int          `json:"base_point,omitempty"`
 	EarlyBuyTime int          `json:"early_buy_time,omitempty"`
-	Discount     DecimalFloat `json:"discount,omitempty"` // Directus will return a string even if they are set as decimal
+	Discount     DecimalFloat `json:"discount,omitempty"`
 }
 
 // user_membership_logs
@@ -256,10 +176,11 @@ type Refund struct {
 
 // checkins
 type Checkin struct {
-	ID          string       `json:"id,omitempty"`
-	CheckinDate string       `json:"date_created,omitempty"`
-	Staff       *User        `json:"staff_id,omitempty"`
-	BookingItem *BookingItem `json:"booking_item_id,omitempty"`
+	ID            string       `json:"id,omitempty"`
+	CheckinDate   string       `json:"date_created,omitempty"`
+	Staff         *User        `json:"staff_id,omitempty"`
+	BookingItem   *BookingItem `json:"booking_item_id,omitempty"`
+	CheckinDevice string       `json:"checkin_device,omitempty"`
 }
 
 // settings
@@ -286,84 +207,6 @@ type Setting struct {
 	TelegramBotToken          string       `json:"telegram_bot_token"`     // Telegram bot token
 	ServerDomain              string       `json:"server_domain"`          // Server domain, used for external API calling
 	MaxWorkers                int          `json:"max_workers"`            // The total of background workers running in the background
-}
-
-// Directus share structure: most directus request, if success, will return a one field: data
-type DirectusResp struct {
-	Data any `json:"data"`
-}
-
-// Directus error response
-type Extension struct {
-	Code string `json:"code"`
-}
-
-type DirectusErrorBody struct {
-	Message   string    `json:"message"`
-	Extension Extension `json:"extensions"`
-}
-
-type DirectusErrorResp struct {
-	Errors []DirectusErrorBody `json:"errors"`
-}
-
-func MakeRequest(method, url string, body any, token string, result any) (int, error) {
-	var (
-		req *http.Request
-		err error
-	)
-
-	// Build HTTP request based on body payload
-	if body != nil {
-		// build body
-		data, err := json.Marshal(body)
-		if err != nil {
-			return http.StatusInternalServerError, err
-		}
-		req, err = http.NewRequest(method, url, bytes.NewBuffer(data))
-		if err != nil {
-			return http.StatusInternalServerError, err
-		}
-	} else {
-		req, err = http.NewRequest(method, url, nil)
-		if err != nil {
-			return http.StatusInternalServerError, err
-		}
-	}
-
-	// Set request header
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	// Make request to Directus API
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return http.StatusInternalServerError, err
-	}
-
-	// Check status code. Typically, Directus error code ranges from 4xx to 5xx (https://directus.io/docs/guides/connect/errors)
-	if resp.StatusCode >= 400 {
-		// Directus return a list of errors
-		var errs DirectusErrorResp
-		json.NewDecoder(resp.Body).Decode(&errs)
-		message := strings.Builder{}
-		for _, directusErr := range errs.Errors {
-			message.WriteString(fmt.Sprintf("Error: %s (%s)\n", directusErr.Message, directusErr.Extension.Code))
-		}
-
-		return resp.StatusCode, fmt.Errorf("response status not ok (%d): %s", resp.StatusCode, message.String())
-	}
-
-	// Parse Directus response
-	if resp.StatusCode != http.StatusNoContent {
-		// Only parse if Directus actually return something
-		directusResp := DirectusResp{Data: result}
-		if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
-			return http.StatusInternalServerError, err
-		}
-	}
-
-	return resp.StatusCode, nil
 }
 
 // Image response: the response when uploading image in Directus

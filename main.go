@@ -34,7 +34,6 @@ func main() {
 
 	// Connect to database and Redis
 	queries := db.NewQueries()
-	queries.ConnectDB(config.DirectusAddr, config.DirectusStaticToken)
 
 	// Connect Redis
 	ctx := context.Background()

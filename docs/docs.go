@@ -17,7 +17,7 @@ const docTemplate = `{
     "paths": {
         "/api/auth/login": {
             "post": {
-                "description": "Authenticate user with username and password. Returns access and refresh JWT tokens.",
+                "description": "Authenticates a user with Directus and returns an access token and refresh token.",
                 "consumes": [
                     "application/json"
                 ],
@@ -30,7 +30,7 @@ const docTemplate = `{
                 "summary": "User login",
                 "parameters": [
                     {
-                        "description": "Login request body (username, password)",
+                        "description": "User login credentials",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -41,19 +41,25 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful login with access and refresh tokens",
+                        "description": "Login successful",
                         "schema": {
                             "$ref": "#/definitions/api.LoginResponse"
                         }
                     },
                     "400": {
-                        "description": "Invalid request body or incorrect credentials",
+                        "description": "Invalid request body",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
-                    "403": {
-                        "description": "Account not active, cannot login",
+                    "401": {
+                        "description": "Incorrect login credentials",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -69,7 +75,7 @@ const docTemplate = `{
         },
         "/api/auth/logout": {
             "post": {
-                "description": "Invalidate all tokens for logout",
+                "description": "Logs out a user by invalidating the provided refresh token in Directus.",
                 "consumes": [
                     "application/json"
                 ],
@@ -79,10 +85,10 @@ const docTemplate = `{
                 "tags": [
                     "Auth"
                 ],
-                "summary": "User logout",
+                "summary": "Logout user",
                 "parameters": [
                     {
-                        "description": "Logout body: refresh token",
+                        "description": "Refresh token for logout",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -93,19 +99,25 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful logout, all tokens is invalidate",
+                        "description": "Logout success",
                         "schema": {
                             "$ref": "#/definitions/api.SuccessMessage"
                         }
                     },
                     "400": {
-                        "description": "Invalid request body or incorrect credentials",
+                        "description": "Invalid request body",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
-                    "403": {
-                        "description": "Account not active, cannot login",
+                    "401": {
+                        "description": "Invalid refresh token",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -165,7 +177,7 @@ const docTemplate = `{
         },
         "/api/auth/password/reset": {
             "post": {
-                "description": "Resets the user's password using a valid password reset token.\nThe token must be provided in the request body and is validated for authenticity and expiration.",
+                "description": "Resets the user's password using a valid reset token. The token must be verified before updating the password.",
                 "consumes": [
                     "application/json"
                 ],
@@ -178,7 +190,7 @@ const docTemplate = `{
                 "summary": "Reset user password",
                 "parameters": [
                     {
-                        "description": "Password reset request body containing token and new password",
+                        "description": "Token and new password",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -189,19 +201,31 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Password changed successfully",
+                        "description": "Password change successfully",
                         "schema": {
                             "$ref": "#/definitions/api.SuccessMessage"
                         }
                     },
                     "400": {
-                        "description": "Invalid or expired token",
+                        "description": "Invalid request body",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid new password",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error or failed to communicate with Directus",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -211,7 +235,7 @@ const docTemplate = `{
         },
         "/api/auth/refresh": {
             "post": {
-                "description": "Uses the provided refresh token to obtain a new access token and refresh token from Directus.",
+                "description": "Refreshes the access token using a valid Directus refresh token.",
                 "consumes": [
                     "application/json"
                 ],
@@ -221,10 +245,10 @@ const docTemplate = `{
                 "tags": [
                     "Auth"
                 ],
-                "summary": "Refresh authentication tokens",
+                "summary": "Refresh access token",
                 "parameters": [
                     {
-                        "description": "Request body containing the refresh token",
+                        "description": "Refresh token for refreshing access token",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -235,7 +259,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "New tokens generated successfully",
+                        "description": "Token refresh success",
                         "schema": {
                             "$ref": "#/definitions/api.LoginResponse"
                         }
@@ -246,8 +270,20 @@ const docTemplate = `{
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
+                    "401": {
+                        "description": "Invalid refresh token",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
                     "500": {
-                        "description": "Internal server error or failed to communicate with Directus",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -257,7 +293,7 @@ const docTemplate = `{
         },
         "/api/auth/register": {
             "post": {
-                "description": "Creates a new user account with the provided username, email, phone, password, and role.\nSends a verification email to activate the account.",
+                "description": "Creates a new user in Directus and triggers a verification email. The email must be unique per role.",
                 "consumes": [
                     "application/json"
                 ],
@@ -270,7 +306,7 @@ const docTemplate = `{
                 "summary": "Register a new user account",
                 "parameters": [
                     {
-                        "description": "Registration request body",
+                        "description": "User registration information",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -280,20 +316,38 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "Create account success with status inactive",
+                    "200": {
+                        "description": "Account created successfully",
                         "schema": {
                             "$ref": "#/definitions/api.RegisterResponse"
                         }
                     },
                     "400": {
-                        "description": "Invalid request body or existing username/email/phone",
+                        "description": "Invalid request body | Invalid role value | Email already registered",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No item with such ID",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error or failed to send verification email",
+                        "description": "Internal server error | Failed to send verification email",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -720,18 +774,6 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Filter by category name (case-insensitive contains)",
                         "name": "category",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Filter by minimum base price",
-                        "name": "min_price",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Filter by maximum base price",
-                        "name": "max_price",
                         "in": "query"
                     },
                     {
@@ -1903,7 +1945,6 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "discount": {
-                    "description": "Directus will return a string even if they are set as decimal",
                     "type": "number"
                 },
                 "early_buy_time": {

@@ -37,8 +37,8 @@ func (server *Server) GetProfile(ctx *gin.Context) {
 	var profile ProfileResponse
 	status, err := db.MakeRequest("GET", url, nil, server.GetToken(ctx), &profile)
 	if err != nil {
-		util.LOGGER.Error("GET /api/profile: failed to make request to Directus", "error", err)
-		ctx.JSON(status, ErrorResponse{err.Error()})
+		util.LOGGER.Error("GET /api/profile: failed to get user profile", "status", status, "error", err)
+		server.DirectusError(ctx, err)
 		return
 	}
 
@@ -75,6 +75,7 @@ func (server *Server) UpdateProfile(ctx *gin.Context) {
 	// Get request body
 	var req UpdateProfileRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
+		util.LOGGER.Warn("PUT /api/profile: failed to bind request body", "error", err)
 		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid request body"})
 		return
 	}
@@ -114,11 +115,15 @@ func (server *Server) UpdateProfile(ctx *gin.Context) {
 	var profile ProfileResponse
 	status, err := db.MakeRequest("PATCH", url, data, server.GetToken(ctx), &profile)
 	if err != nil {
-		util.LOGGER.Error("PUT /api/profile: failed to make request into Directus", "error", err)
-		ctx.JSON(status, ErrorResponse{err.Error()})
+		util.LOGGER.Error("PUT /api/profile: failed to update user profile", "status", status, "error", err)
+		server.DirectusError(ctx, err)
 		return
 	}
 
-	profile.Avatar = util.CreateImageLink(server.config.ServerDomain, profile.Avatar)
+	// Remap image link
+	if profile.Avatar != "" {
+		profile.Avatar = util.CreateImageLink(server.config.ServerDomain, profile.Avatar)
+	}
+
 	ctx.JSON(http.StatusOK, profile)
 }

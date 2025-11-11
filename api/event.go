@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -32,10 +33,6 @@ import (
 func (server *Server) GetEvent(ctx *gin.Context) {
 	// Get access token
 	token := server.GetToken(ctx)
-	if token == "" {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
-		return
-	}
 
 	// Get event ID by request path parameter
 	id := ctx.Param("id") // Although it was called id, it can be either event ID or slug
@@ -74,8 +71,8 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 		var results []db.Event
 		status, err := db.MakeRequest("GET", url, nil, token, &results)
 		if err != nil {
-			util.LOGGER.Error("GET /api/events/:id: failed to get event from Directus", "error", err, "id", id)
-			ctx.JSON(status, ErrorResponse{Message: err.Error()})
+			util.LOGGER.Error("GET /api/events/:id: failed to get event from Directus", "status", status, "error", err, "id", id)
+			server.DirectusError(ctx, err)
 			return
 		}
 
@@ -97,8 +94,8 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 		var event db.Event
 		status, err := db.MakeRequest("GET", url, nil, token, &event)
 		if err != nil {
-			util.LOGGER.Error("GET /api/events/:id: failed to get event from Directus", "error", err)
-			ctx.JSON(status, ErrorResponse{err.Error()})
+			util.LOGGER.Error("GET /api/events/:id: failed to get event from Directus", "status", status, "error", err, "id", id)
+			server.DirectusError(ctx, err)
 			return
 		}
 
@@ -109,6 +106,32 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 
 		ctx.JSON(http.StatusOK, event)
 	}
+}
+
+// Helper method: calculate the smallest base price of a ticket belong to an event
+func (server *Server) calculateEventMinimumBasePrice(tickets []db.Ticket) int {
+	minPrice := tickets[0].BasePrice
+	for i := 1; i < len(tickets); i++ {
+		minPrice = min(minPrice, tickets[i].BasePrice)
+	}
+	return minPrice
+}
+
+// Helper method: get the nearest (before or after) start time of an event
+func (server *Server) getNearestEventStartTime(schedules []db.EventSchedule) string {
+	now := time.Now()
+	nearestDiff := time.Duration(math.MaxInt64)
+	var nearest *db.DateTime
+
+	for _, schedule := range schedules {
+		diff := now.Sub(time.Time(*schedule.StartTime)).Abs()
+		if diff < nearestDiff {
+			nearestDiff = diff
+			nearest = schedule.StartTime
+		}
+	}
+
+	return time.Time(*nearest).String()
 }
 
 // Event minimal info for list view
@@ -133,8 +156,6 @@ type EventInfo struct {
 // @Param        name         query     string  false  "Filter by event name (case-insensitive contains)"
 // @Param        location     query     string  false  "Filter by city or country (case-insensitive contains)"
 // @Param        category     query     string  false  "Filter by category name (case-insensitive contains)"
-// @Param        min_price    query     int     false  "Filter by minimum base price"
-// @Param        max_price    query     int     false  "Filter by maximum base price"
 // @Param        limit        query     int     false  "Limit number of results (default: 50)"
 // @Param        offset       query     int     false  "Offset for pagination (default: 0)"
 // @Param        sort         query     string  false  "Sort field (default: -date_created). Use - prefix for descending"
@@ -166,6 +187,9 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 	// Filter: only published events
 	queryParams.Add("filter[status][_eq]", "published")
 
+	// Filter: only fetch category that is published
+	queryParams.Add("deep[category_id][_filter][status][_icontains]", "published")
+
 	// Filter: by name (case-insensitive)
 	if name := ctx.Query("name"); name != "" {
 		queryParams.Add("filter[name][_icontains]", name)
@@ -173,29 +197,13 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 
 	// Filter: by location (city OR country)
 	if location := ctx.Query("location"); location != "" {
-		// Use JSON filter for OR condition
-		locationFilter := fmt.Sprintf(`{"_or":[{"city":{"_icontains":"%s"}},{"country":{"_icontains":"%s"}}]}`,
-			location, location)
-		queryParams.Add("filter", locationFilter)
+		queryParams.Add("filter[_or][0][city][_icontains]", location)
+		queryParams.Add("filter[_or][1][country][_icontains]", location)
 	}
 
 	// Filter: by category name
 	if category := ctx.Query("category"); category != "" {
 		queryParams.Add("filter[category_id][name][_icontains]", category)
-	}
-
-	// Note: Price filtering is done post-fetch since we need to calculate min price from tickets
-	minPrice := 0
-	maxPrice := 0
-	if minPriceStr := ctx.Query("min_price"); minPriceStr != "" {
-		if val, err := strconv.Atoi(minPriceStr); err == nil {
-			minPrice = val
-		}
-	}
-	if maxPriceStr := ctx.Query("max_price"); maxPriceStr != "" {
-		if val, err := strconv.Atoi(maxPriceStr); err == nil {
-			maxPrice = val
-		}
 	}
 
 	// Pagination
@@ -227,10 +235,10 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 
 	// Make request to Directus
 	var directusResult []db.Event
-	statusCode, err := db.MakeRequest("GET", directusURL, nil, token, &directusResult)
+	status, err := db.MakeRequest("GET", directusURL, nil, token, &directusResult)
 	if err != nil {
-		util.LOGGER.Error("GET /api/events: failed to get events from Directus", "error", err)
-		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
+		util.LOGGER.Error("GET /api/events: failed to get events from Directus", "status", status, "error", err)
+		server.DirectusError(ctx, err)
 		return
 	}
 
@@ -238,68 +246,6 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 	events := make([]EventInfo, 0)
 
 	for _, event := range directusResult {
-		// Calculate base price (minimum of published tickets)
-		basePrice := 0
-		hasPublishedTickets := false
-		for _, ticket := range event.Tickets {
-			if ticket.Status == "published" {
-				if !hasPublishedTickets || ticket.BasePrice < basePrice {
-					basePrice = ticket.BasePrice
-					hasPublishedTickets = true
-				}
-			}
-		}
-
-		// Apply price filters
-		if minPrice > 0 && basePrice < minPrice {
-			continue
-		}
-		if maxPrice > 0 && basePrice > maxPrice {
-			continue
-		}
-
-		// Find closest start time
-		startTime := ""
-		if len(event.EventSchedules) > 0 {
-			currentTime := time.Now()
-			var closestTime time.Time
-			foundFutureTime := false
-
-			for _, schedule := range event.EventSchedules {
-				if schedule.StartTime == nil {
-					continue
-				}
-				scheduleTime := time.Time(*schedule.StartTime)
-
-				// Find the closest future time, or the latest past time if no future times
-				if scheduleTime.After(currentTime) {
-					util.LOGGER.Info("GET /api/events: schedule time after current time")
-					if !foundFutureTime || scheduleTime.Before(closestTime) {
-						util.LOGGER.Info("Not found future time or schedule time before closest time")
-						closestTime = scheduleTime
-						foundFutureTime = true
-					}
-				} else if !foundFutureTime {
-					util.LOGGER.Info("GET /api/events: not found future time")
-					if closestTime.IsZero() || scheduleTime.After(closestTime) {
-						util.LOGGER.Info("GET /api/events: closest time is zero or schedule time after closest time")
-						closestTime = scheduleTime
-					}
-				}
-			}
-
-			if !closestTime.IsZero() {
-				util.LOGGER.Info("GET /api/events: closest time not zero")
-				startTime = closestTime.Format(time.RFC3339)
-			}
-		}
-
-		// Build category (only if published)
-		category := db.Category{}
-		if event.Category != nil && event.Category.Status == "published" {
-			category = *event.Category
-		}
-
 		// Create event info
 		eventInfo := EventInfo{
 			ID:           event.ID,
@@ -308,9 +254,17 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 			City:         event.City,
 			Country:      event.Country,
 			PreviewImage: event.PreviewImage,
-			Category:     category,
-			StartTime:    startTime,
-			BasePrice:    basePrice,
+			Category:     *event.Category,
+		}
+
+		// Calculate smallest base price for this event
+		if len(event.Tickets) > 0 {
+			eventInfo.BasePrice = server.calculateEventMinimumBasePrice(event.Tickets)
+		}
+
+		// Get the nearest time in relative to the current time
+		if len(event.EventSchedules) > 0 {
+			eventInfo.StartTime = server.getNearestEventStartTime(event.EventSchedules)
 		}
 
 		// Remap preview_image ID to link
@@ -355,10 +309,10 @@ func (server *Server) GetCategories(ctx *gin.Context) {
 
 	// Make request to Directus
 	var categories []db.Category
-	statusCode, err := db.MakeRequest("GET", directusURL, nil, token, &categories)
+	status, err := db.MakeRequest("GET", directusURL, nil, token, &categories)
 	if err != nil {
-		util.LOGGER.Error("GET /api/events/categories: failed to get categories from Directus", "error", err)
-		ctx.JSON(statusCode, ErrorResponse{Message: err.Error()})
+		util.LOGGER.Error("GET /api/events/categories: failed to get categories from Directus", "status", status, "error", err)
+		server.DirectusError(ctx, err)
 		return
 	}
 
