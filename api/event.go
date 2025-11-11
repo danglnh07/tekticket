@@ -110,15 +110,24 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 
 // Helper method: calculate the smallest base price of a ticket belong to an event
 func (server *Server) calculateEventMinimumBasePrice(tickets []db.Ticket) int {
+	if len(tickets) == 0 {
+		return 0
+	}
+
 	minPrice := tickets[0].BasePrice
 	for i := 1; i < len(tickets); i++ {
 		minPrice = min(minPrice, tickets[i].BasePrice)
 	}
+
 	return minPrice
 }
 
 // Helper method: get the nearest (before or after) start time of an event
 func (server *Server) getNearestEventStartTime(schedules []db.EventSchedule) string {
+	if len(schedules) == 0 {
+		return ""
+	}
+
 	now := time.Now()
 	nearestDiff := time.Duration(math.MaxInt64)
 	var nearest *db.DateTime
@@ -167,10 +176,6 @@ type EventInfo struct {
 func (server *Server) ListEvents(ctx *gin.Context) {
 	// Get access token
 	token := server.GetToken(ctx)
-	if token == "" {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
-		return
-	}
 
 	// Build query parameters
 	queryParams := url.Values{}
@@ -208,18 +213,14 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 
 	// Pagination
 	limit := 50
-	if limitStr := ctx.Query("limit"); limitStr != "" {
-		if val, err := strconv.Atoi(limitStr); err == nil && val > 0 {
-			limit = val
-		}
+	if val, err := strconv.Atoi(ctx.Query("limit")); err == nil && val > 0 {
+		limit = val
 	}
 	queryParams.Add("limit", strconv.Itoa(limit))
 
 	offset := 0
-	if offsetStr := ctx.Query("offset"); offsetStr != "" {
-		if val, err := strconv.Atoi(offsetStr); err == nil && val >= 0 {
-			offset = val
-		}
+	if val, err := strconv.Atoi(ctx.Query("offset")); err == nil && val >= 0 {
+		offset = val
 	}
 	queryParams.Add("offset", strconv.Itoa(offset))
 
@@ -258,14 +259,10 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 		}
 
 		// Calculate smallest base price for this event
-		if len(event.Tickets) > 0 {
-			eventInfo.BasePrice = server.calculateEventMinimumBasePrice(event.Tickets)
-		}
+		eventInfo.BasePrice = server.calculateEventMinimumBasePrice(event.Tickets)
 
 		// Get the nearest time in relative to the current time
-		if len(event.EventSchedules) > 0 {
-			eventInfo.StartTime = server.getNearestEventStartTime(event.EventSchedules)
-		}
+		eventInfo.StartTime = server.getNearestEventStartTime(event.EventSchedules)
 
 		// Remap preview_image ID to link
 		if eventInfo.PreviewImage != "" {

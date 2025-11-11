@@ -54,18 +54,14 @@ func (server *Server) ListBookingHistory(ctx *gin.Context) {
 
 	// Pagination
 	limit := 50
-	if limitStr := ctx.Query("limit"); limitStr != "" {
-		if val, err := strconv.Atoi(limitStr); err == nil && val > 0 {
-			limit = val
-		}
+	if val, err := strconv.Atoi(ctx.Query("limit")); err == nil && val > 0 {
+		limit = val
 	}
 	queryParams.Add("limit", strconv.Itoa(limit))
 
 	offset := 0
-	if offsetStr := ctx.Query("offset"); offsetStr != "" {
-		if val, err := strconv.Atoi(offsetStr); err == nil && val >= 0 {
-			offset = val
-		}
+	if val, err := strconv.Atoi(ctx.Query("offset")); err == nil && val >= 0 {
+		offset = val
 	}
 	queryParams.Add("offset", strconv.Itoa(offset))
 
