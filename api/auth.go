@@ -71,7 +71,7 @@ func (server *Server) Register(ctx *gin.Context) {
 
 	// Check if this email has been register. Email must be unique for each role
 	url = fmt.Sprintf(
-		"%s/users?fields=id&filter=[email][_eq]=%s&filter[role][name][_icontains]=%s",
+		"%s/users?fields=id&filter[email][_eq]=%s&filter[role][name][_icontains]=%s",
 		server.config.DirectusAddr,
 		req.Email,
 		req.Role,
