@@ -84,7 +84,7 @@ definitions:
       booking_id:
         type: string
       payment_id:
-        description: This is used for retry when payment failed
+        description: Used for retry
         type: string
     required:
     - amount
@@ -93,10 +93,16 @@ definitions:
   api.CreatePaymentResponse:
     properties:
       client_secret:
+        description: Stripe payment intent client secret
         type: string
-      payment:
-        $ref: '#/definitions/db.Payment'
+      payment_id:
+        description: Database ID
+        type: string
       publishable_key:
+        description: Stripe publishable key
+        type: string
+      transaction_id:
+        description: Stripe payment_intent_id
         type: string
     type: object
   api.ErrorResponse:
@@ -478,6 +484,27 @@ definitions:
         $ref: '#/definitions/db.SeatZone'
       status:
         type: string
+      ticket_selling_schedules:
+        items:
+          $ref: '#/definitions/db.TicketSellingSchedule'
+        type: array
+    type: object
+  db.TicketSellingSchedule:
+    properties:
+      available:
+        type: integer
+      end_selling_time:
+        type: string
+      id:
+        type: string
+      start_selling_time:
+        type: string
+      status:
+        type: string
+      ticket_id:
+        $ref: '#/definitions/db.Ticket'
+      total:
+        type: integer
     type: object
   db.User:
     properties:
@@ -1322,47 +1349,6 @@ paths:
       summary: Refund a successful payment
       tags:
       - Payments
-  /api/payments/{id}/retry-qr-publishing:
-    post:
-      consumes:
-      - application/json
-      description: |-
-        Re-publishes QR codes for all booking items associated with a successful payment.
-        Used when QR generation failed after payment confirmation.
-      parameters:
-      - description: Payment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: QR publishing retried successfully
-          schema:
-            $ref: '#/definitions/api.SuccessMessage'
-        "400":
-          description: Invalid payment status or bad request
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-        "401":
-          description: Unauthorized access
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-        "404":
-          description: Payment ID not found
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-        "500":
-          description: Internal server or task distribution error
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Retry QR ticket publishing for a completed payment
-      tags:
-      - Payment
   /api/payments/method:
     get:
       consumes:
@@ -1380,6 +1366,8 @@ paths:
           description: Internal server error
           schema:
             $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Create payment method
       tags:
       - Payments

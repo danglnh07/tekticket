@@ -1,15 +1,17 @@
 package uploader
 
 import (
+	"net/http"
 	"os"
 	"strings"
 	"tekticket/util"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 var (
-	service *CloudinaryService
-	err     error
+	service *Uploader
 )
 
 func TestMain(m *testing.M) {
@@ -20,11 +22,17 @@ func TestMain(m *testing.M) {
 	}
 
 	// Create test dependency
-	service, err = NewCld(os.Getenv("CLOUDINARY_NAME"), os.Getenv("CLOUDINARY_APIKEY"), os.Getenv("CLOUDINARY_APISECRET"))
-	if err != nil {
-		util.LOGGER.Error("failed to create cloudinary service for test", "error", err)
-		os.Exit(1)
-	}
-
+	service = NewUploader(os.Getenv("DIRECTUS_ADDR"), os.Getenv("DIRECTUS_STATIC_TOKEN"))
 	os.Exit(m.Run())
+}
+
+func TestUpload(t *testing.T) {
+	image, err := util.GenerateQR(util.RandomString(10))
+	require.NoError(t, err)
+	require.NotEmpty(t, image)
+
+	id, status, err := service.Upload("test-new-upload.png", image)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, status)
+	require.NotEmpty(t, id)
 }

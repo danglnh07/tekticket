@@ -81,15 +81,13 @@ func ConfirmPaymentIntent(piID, pmID string) (*stripe.PaymentIntent, error) {
 	return result, nil
 }
 
-// Check if a payment intent last API call success or not. For create payment intent,
-// if it success, the status would be 'require_payment_method', so only confirm and refund would be a 'succeeded' status
-func IsPaymentIntentLastCallSuccess(piID string) (bool, error) {
+// Get payment intent
+func GetPaymentIntent(piID string) (*stripe.PaymentIntent, error) {
 	intent, err := paymentintent.Get(piID, &stripe.PaymentIntentParams{})
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-
-	return intent.Status == "succeeded", nil
+	return intent, nil
 }
 
 type RefundReason string

@@ -110,13 +110,14 @@ type Seat struct {
 
 // tickets
 type Ticket struct {
-	ID          string    `json:"id,omitempty"`
-	Rank        string    `json:"rank,omitempty"`
-	Description string    `json:"description,omitempty"`
-	BasePrice   int       `json:"base_price,omitempty"`
-	Status      string    `json:"status,omitempty"`
-	Event       *Event    `json:"event_id,omitempty"`
-	SeatZone    *SeatZone `json:"seat_zone_id,omitempty"`
+	ID                     string                  `json:"id,omitempty"`
+	Rank                   string                  `json:"rank,omitempty"`
+	Description            string                  `json:"description,omitempty"`
+	BasePrice              int                     `json:"base_price,omitempty"`
+	Status                 string                  `json:"status,omitempty"`
+	Event                  *Event                  `json:"event_id,omitempty"`
+	SeatZone               *SeatZone               `json:"seat_zone_id,omitempty"`
+	TicketSellingSchedules []TicketSellingSchedule `json:"ticket_selling_schedules,omitempty"`
 }
 
 // ticket_selling_schedules

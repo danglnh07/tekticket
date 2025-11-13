@@ -1,3 +1,6 @@
 # Ignore all .env files 
 *.env
 .env.test
+
+# Ignore the test coverage output 
+coverage.out

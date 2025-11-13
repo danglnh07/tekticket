@@ -15,6 +15,8 @@ import (
 	"tekticket/util"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hibiken/asynq"
+	"github.com/hibiken/asynqmon"
 
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -60,6 +62,13 @@ func NewServer(
 func (server *Server) RegisterHandler() {
 	server.router.Use(server.CORSMiddleware())
 
+	// Setup asynqmon
+	h := asynqmon.New(asynqmon.Options{
+		RootPath:     "/monitoring",
+		RedisConnOpt: asynq.RedisClientOpt{Addr: server.config.RedisAddr},
+	})
+	server.router.Any("/monitoring/*a", gin.WrapH(h))
+
 	// API routes
 	api := server.router.Group("/api")
 	{
@@ -102,7 +111,6 @@ func (server *Server) RegisterHandler() {
 			payments.GET("/method", server.CreatePaymentMethod)
 			payments.POST("/:id/confirm", server.ConfirmPayment)
 			payments.POST("/:id/refund", server.Refund)
-			payments.POST("/:id/retry-qr-publishing", server.RetryQRPublishing)
 		}
 
 		// Checkin routes
@@ -135,12 +143,9 @@ func (server *Server) RegisterHandler() {
 		webhook := api.Group("/webhook")
 		{
 			webhook.POST("/telegram", server.TelegramWebhook)
-		}
-
-		// Notification
-		notification := api.Group("/notifications")
-		{
-			notification.POST("/webhook", server.NotificationWebhook)
+			webhook.POST("notifications", server.NotificationWebhook)
+			webhook.POST("/refund", server.RefundWebhook)
+			webhook.POST("/tickets/publish", server.PublishQRTickets)
 		}
 	}
 
@@ -155,6 +160,7 @@ func (server *Server) RegisterHandler() {
 func (server *Server) Start() error {
 	server.RegisterHandler()
 	util.LOGGER.Info("Server running. Visit API document at: http://localhost:8080/swagger/index.html")
+	util.LOGGER.Info("Visit asynq monitoring at: http://localhost:8080/monitoring")
 	return server.router.Run(":8080")
 }
 

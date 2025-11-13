@@ -188,5 +188,23 @@ func (processor *RedisTaskProcessor) Start() error {
 
 	})
 
+	mux.HandleFunc(UpdatePaymentRecord, func(ctx context.Context, t *asynq.Task) error {
+		// Unmarshal payload
+		var payload UpdatePaymentRecordPayload
+		if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+			util.LOGGER.Error("failed to process task", "task", UpdatePaymentRecord, "error", err)
+			return err
+		}
+
+		err := processor.RetryUpdatePaymentRecord(payload)
+		if err != nil {
+			util.LOGGER.Error("failed to process task", "task", UpdatePaymentRecord, "error", err)
+			return err
+		}
+
+		util.LOGGER.Info("task success", "task", UpdatePaymentRecord)
+		return nil
+	})
+
 	return processor.server.Start(mux)
 }

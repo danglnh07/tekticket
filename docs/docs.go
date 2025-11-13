@@ -1069,6 +1069,11 @@ const docTemplate = `{
         },
         "/api/payments/method": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Create payment method for confirm payment. This API is solely for internal testing, not to be consumed by any client",
                 "consumes": [
                     "application/json"
@@ -1220,67 +1225,6 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Stripe or Directus internal error",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/payments/{id}/retry-qr-publishing": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Re-publishes QR codes for all booking items associated with a successful payment.\nUsed when QR generation failed after payment confirmation.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Payment"
-                ],
-                "summary": "Retry QR ticket publishing for a completed payment",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Payment ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "QR publishing retried successfully",
-                        "schema": {
-                            "$ref": "#/definitions/api.SuccessMessage"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid payment status or bad request",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized access",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Payment ID not found",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server or task distribution error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -1515,7 +1459,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "payment_id": {
-                    "description": "This is used for retry when payment failed",
+                    "description": "Used for retry",
                     "type": "string"
                 }
             }
@@ -1524,12 +1468,19 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "client_secret": {
+                    "description": "Stripe payment intent client secret",
                     "type": "string"
                 },
-                "payment": {
-                    "$ref": "#/definitions/db.Payment"
+                "payment_id": {
+                    "description": "Database ID",
+                    "type": "string"
                 },
                 "publishable_key": {
+                    "description": "Stripe publishable key",
+                    "type": "string"
+                },
+                "transaction_id": {
+                    "description": "Stripe payment_intent_id",
                     "type": "string"
                 }
             }
@@ -2105,6 +2056,38 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
+                },
+                "ticket_selling_schedules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/db.TicketSellingSchedule"
+                    }
+                }
+            }
+        },
+        "db.TicketSellingSchedule": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "integer"
+                },
+                "end_selling_time": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "start_selling_time": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "ticket_id": {
+                    "$ref": "#/definitions/db.Ticket"
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },

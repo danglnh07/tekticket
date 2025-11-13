@@ -6,12 +6,14 @@ import (
 	"strings"
 	"tekticket/db"
 	"tekticket/service/bot"
+	"tekticket/service/payment"
 	"tekticket/service/worker"
 	"tekticket/util"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hibiken/asynq"
+	"github.com/stripe/stripe-go/v82"
 )
 
 // Telegram webhook that will listen to any message that user send to the bot.
@@ -187,7 +189,7 @@ type NotificationRequest struct {
 // @Success      200  {object}  SuccessMessage       "Notification dispatched successfully"
 // @Failure      400  {object}  ErrorResponse        "Invalid request body or missing required destinations"
 // @Failure      500  {object}  ErrorResponse        "Internal server error or failed to distribute background task"
-// @Router       /api/notifications/webhook [post]
+// @Router       /api/webhook/notifications [post]
 func (server *Server) NotificationWebhook(ctx *gin.Context) {
 	// This webhook is used for Directus's flows to send notification back to the server for processing
 	var req NotificationRequest
@@ -229,7 +231,7 @@ func (server *Server) NotificationWebhook(ctx *gin.Context) {
 		)
 		if err != nil {
 			util.LOGGER.Error(
-				"POST /api/notifications/webhook: failed to distribute task",
+				"POST /api/webhook/notifications: failed to distribute task",
 				"task", worker.SendInAppNotification,
 				"error", err,
 			)
@@ -257,7 +259,7 @@ func (server *Server) NotificationWebhook(ctx *gin.Context) {
 		)
 		if err != nil {
 			util.LOGGER.Error(
-				"POST /api/notifications/webhook: failed to distribute task",
+				"POST /api/webhook/notifications: failed to distribute task",
 				"task", worker.SendTelegramNotification,
 				"error", err,
 			)
@@ -285,7 +287,7 @@ func (server *Server) NotificationWebhook(ctx *gin.Context) {
 		)
 		if err != nil {
 			util.LOGGER.Error(
-				"POST /api/notifications/webhook: failed to distribute task",
+				"POST /api/webhook/notifications: failed to distribute task",
 				"task", worker.SendEmailNotification,
 				"error", err,
 			)
@@ -293,4 +295,81 @@ func (server *Server) NotificationWebhook(ctx *gin.Context) {
 			return
 		}
 	}
+}
+
+// Publish QR webhook
+type PublishQRTicketsRequest struct {
+	BookingItemIDs []string `json:"booking_item_ids" binding:"required"`
+}
+
+func (server *Server) PublishQRTickets(ctx *gin.Context) {
+	// Get and validate request body
+	var req PublishQRTicketsRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		util.LOGGER.Warn("POST /api/tickets/pulish: failed to bind request body", "error", err)
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid request body"})
+		return
+	}
+
+	// Distribute background task: publish QR
+	err := server.distributor.DistributeTask(
+		ctx,
+		worker.PublishQRTicket,
+		worker.PublishQRTicketPayload{
+			BookingItemIDs: req.BookingItemIDs,
+			CheckInURL:     server.config.CheckinURL,
+		},
+		asynq.Queue(worker.MEDIUM_IMPACT),
+		asynq.MaxRetry(5),
+	)
+
+	if err != nil {
+		util.LOGGER.Error(
+			"POST /api/webhook/tickets/publish: failed to distribute background task",
+			"task", worker.PublishQRTicket,
+			"error", err,
+		)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, SuccessMessage{"Start publishing QR"})
+}
+
+// Refund webhook for event-cancelling -> called by Directus
+type RefundRequest struct {
+	PaymentIntentID string `json:"payment_intent_id"`
+	Amount          int64  `json:"amount"`
+}
+
+func (server *Server) RefundWebhook(ctx *gin.Context) {
+	// Here, what we really do is just call refund in Stripe, all of the database update/rollback should be handled by Directus flow
+	var req RefundRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		util.LOGGER.Warn("POST /api/webhook/refund: failed to bind request body", "error", err)
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid request body"})
+		return
+	}
+
+	refund, err := payment.CreateRefund(req.PaymentIntentID, payment.RequestedByCustomer, req.Amount)
+	if err != nil {
+		util.LOGGER.Error("POST /api/webhook/refund: failed to create refund", "err", err)
+		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		return
+	}
+
+	// Check if the refund success or not. Just like with confirm, a refund failure does not mean an error.
+	if refund.Status != stripe.RefundStatusSucceeded {
+		// Unlike with intent, Stripe refund object only has a small reason for failured, with no HTTP code return
+		// Most of the refund failure reason seems like it client side more than server side, so we'll return 400 here
+		util.LOGGER.Warn(
+			"POST /api/webhook/refund: refund failed",
+			"status", string(refund.Status),
+			"reason", string(refund.FailureReason),
+		)
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Refund failed: " + string(refund.FailureReason)})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, SuccessMessage{"Refund success"})
 }

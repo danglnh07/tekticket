@@ -50,12 +50,16 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 		"seat_zones.id", "seat_zones.description", "seat_zones.total_seats", "seat_zones.status",
 		"seat_zones.seats.id", "seat_zones.seats.status", "seat_zones.seats.seat_number",
 		"tickets.id", "tickets.rank", "tickets.description", "tickets.base_price", "tickets.status",
+		"tickets.ticket_selling_schedules.id", "tickets.ticket_selling_schedules.total",
+		"tickets.ticket_selling_schedules.available", "tickets.ticket_selling_schedules.start_selling_time",
+		"tickets.ticket_selling_schedules.end_selling_time", "tickets.ticket_selling_schedules.status",
 		"creator_id.first_name", "creator_id.last_name", "creator_id.email",
 		"category_id.id", "category_id.name", "category_id.description", "category_id.status",
 	}
 	queryParams.Add("fields", strings.Join(fields, ","))
 	queryParams.Add("deep[seat_zones][_filter][status][_icontains]", "published")
 	queryParams.Add("deep[tickets][_filter][status][_icontains]", "published")
+	queryParams.Add("deep[tickets][deep][ticket_selling_schedules][_filter][status][_icontains]", "published")
 	queryParams.Add("filter[category_id][status][_icontains]", "published")
 	queryParams.Add("filter[status][_icontains]", "published")
 

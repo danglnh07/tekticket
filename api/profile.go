@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"tekticket/util"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type ProfileResponse struct {
@@ -100,7 +102,15 @@ func (server *Server) UpdateProfile(ctx *gin.Context) {
 	}
 
 	if req.Avatar = strings.TrimSpace(req.Avatar); req.Avatar != "" {
-		status, avatarID, err := server.uploadService.UploadImage(ctx, req.Avatar)
+		// Read the base64 image into a slice of byte
+		image, err := base64.StdEncoding.DecodeString(req.Avatar)
+		if err != nil {
+			util.LOGGER.Warn("PUT /api/profile: failed to decode avatar", "error", err)
+			ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid base64 image value for avatar"})
+			return
+		}
+
+		avatarID, status, err := server.uploadService.Upload(uuid.New().String(), image) // The image doesn't really matter here
 		if err != nil {
 			util.LOGGER.Error("PUT /api/profile: failed to upload new avatar image", "status", status, "error", err)
 			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"failed to handle avatar image"})

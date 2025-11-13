@@ -1,58 +1,80 @@
 package uploader
 
 import (
-	"context"
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"tekticket/db"
-	"tekticket/util"
-
-	"github.com/google/uuid"
 )
 
 type Uploader struct {
-	cloudinary *CloudinaryService
-	config     *util.Config
+	directusAddr        string
+	directusStaticToken string
 }
 
-func NewUploader(cloudinary *CloudinaryService, config *util.Config) *Uploader {
+func NewUploader(directusAddr, directusStaticToken string) *Uploader {
 	return &Uploader{
-		cloudinary: cloudinary,
-		config:     config,
+		directusAddr:        directusAddr,
+		directusStaticToken: directusStaticToken,
 	}
 }
 
-// Upload image into both Cloudinary and Directus
-func (uploader *Uploader) UploadImage(ctx context.Context, image any) (int, string, error) {
-	// Upload the image into Cloudinary first
-	id := uuid.New()
-	cloudResp, err := uploader.cloudinary.UploadImage(ctx, id.String(), image)
-	if err != nil {
-		return http.StatusInternalServerError, "", err
-	}
-	util.LOGGER.Info("Upload cloudinary success", "id", id.String(), "url", cloudResp.SecureURL)
+func (uploader *Uploader) Upload(filename string, image []byte) (string, int, error) {
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
 
-	// Upload image into Directus
-	url := fmt.Sprintf("%s/files/import", uploader.config.DirectusAddr)
-	var imageResp db.DirectusImage
-	status, err := db.MakeRequest(
-		"POST",
-		url,
-		map[string]any{
-			"url": cloudResp.SecureURL,
-			"data": map[string]any{
-				"id":      id.String(),
-				"storage": "cloudinary",
-				"type":    "image/png",
-			},
-		},
-		uploader.config.DirectusStaticToken,
-		&imageResp,
-	)
+	// Create part with custom Content-Type header
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="%s"`, filename))
+	h.Set("Content-Type", "image/png")
+
+	part, err := writer.CreatePart(h)
 	if err != nil {
-		util.LOGGER.Error("Failed to upload image into Directus", "error", err)
-		return status, "", err
+		return "", http.StatusInternalServerError, err
 	}
 
-	return status, imageResp.ID, nil
+	if _, err := part.Write(image); err != nil {
+		return "", http.StatusInternalServerError, err
+	}
+	writer.Close()
+
+	req, err := http.NewRequest("POST", fmt.Sprintf("%s/files", uploader.directusAddr), body)
+	if err != nil {
+		return "", http.StatusInternalServerError, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+uploader.directusStaticToken)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", http.StatusInternalServerError, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		directusErr := db.DirectusErrorResp{}
+		if err := json.NewDecoder(resp.Body).Decode(&directusErr); err != nil {
+			return "", http.StatusInternalServerError, err
+		}
+
+		return "", resp.StatusCode, &directusErr
+	}
+
+	// Parse Directus response
+	if resp.StatusCode != http.StatusNoContent {
+		// Only parse if Directus actually return something
+		var directusImg db.DirectusImage
+		directusResp := db.DirectusResp{Data: &directusImg}
+		if err := json.NewDecoder(resp.Body).Decode(&directusResp); err != nil {
+			return "", http.StatusInternalServerError, err
+		}
+
+		return directusImg.ID, http.StatusOK, nil
+	}
+
+	return "", http.StatusNoContent, nil
 }
