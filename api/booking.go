@@ -14,18 +14,19 @@ import (
 
 // ListBookingHistory godoc
 // @Summary      Get user's booking history
-// @Description  Retrieves the list of completed bookings for the authenticated user, including event and category details.
-// @Tags        Bookings
+// @Description  Retrieves the list of completed bookings for the authenticated user, including event, category and payment.
+// @Tags         Bookings
 // @Accept       json
 // @Produce      json
 // @Param        limit          query     int     false  "Maximum number of records to return (default: 50)"
 // @Param        offset         query     int     false  "Number of records to skip before returning results (default: 0)"
 // @Param        sort           query     string  false  "Sort order, e.g. -date_created (default)"
-// @Success      200  {array}   []db.Booking    "List of completed bookings retrieved successfully"
-// @Failure      400  {object}  ErrorResponse     "Invalid token or parameters"
-// @Failure      401  {object}  ErrorResponse     "Unauthorized access"
-// @Failure      500  {object}  ErrorResponse     "Internal server error or failed to communicate with Directus"
-// @Security BearerAuth
+// @Success      200  {array}   []db.Booking      "List of completed bookings retrieved successfully"
+// @Failure      401  {object}  ErrorResponse     "Unauthorized access | Token expired"
+// @Failure      403  {object}  ErrorResponse     "Invalid token"
+// @Failure      429  {object}  ErrorResponse     "You hit the rate limit"
+// @Failure      500  {object}  ErrorResponse     "Internal server error"
+// @Security     BearerAuth
 // @Router       /api/bookings [get]
 func (server *Server) ListBookingHistory(ctx *gin.Context) {
 	// Get access token
@@ -35,7 +36,7 @@ func (server *Server) ListBookingHistory(ctx *gin.Context) {
 	id, err := util.ExtractIDFromToken(token)
 	if err != nil {
 		util.LOGGER.Error("GET /api/profile/bookings: failed to extract user ID from access token", "error", err)
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid token"})
+		ctx.JSON(http.StatusForbidden, ErrorResponse{"Invalid token"})
 		return
 	}
 
@@ -47,10 +48,12 @@ func (server *Server) ListBookingHistory(ctx *gin.Context) {
 		"event_id.event_schedules.id", "event_id.event_schedules.start_time", "event_id.event_schedules.end_time",
 		"event_id.event_schedules.start_checkin_time", "event_id.event_schedules.end_checkin_time",
 		"event_id.category_id.id", "event_id.category_id.name", "event_id.category_id.description",
+		"payments.id", "payments.amount", "payments.status",
 	}
 	queryParams.Add("fields", strings.Join(fields, ","))
 	queryParams.Add("filter[customer_id][_eq]", id)
 	queryParams.Add("filter[status][_icontains]", "complete")
+	queryParams.Add("[deep][payments][_filter][status][_eq]", "success")
 
 	// Pagination
 	limit := 50
@@ -79,7 +82,7 @@ func (server *Server) ListBookingHistory(ctx *gin.Context) {
 	var results []db.Booking
 	status, err := db.MakeRequest("GET", url, nil, token, &results)
 	if err != nil {
-		util.LOGGER.Error("GET /api/bookings/:id: failed to get booking history", "status", status, "error", err)
+		util.LOGGER.Error("GET /api/bookings/{id}: failed to get booking history", "status", status, "error", err)
 		server.DirectusError(ctx, err)
 		return
 	}
@@ -101,12 +104,13 @@ func (server *Server) ListBookingHistory(ctx *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id             path      string  true   "Booking ID"
-// @Success      200  {object}  db.Booking     "Booking detail retrieved successfully"
-// @Failure      400  {object}  ErrorResponse     "Invalid request parameters"
-// @Failure      401  {object}  ErrorResponse     "Unauthorized access"
-// @Failure      404  {object}  ErrorResponse     "Booking not found"
-// @Failure      500  {object}  ErrorResponse     "Internal server error or failed to communicate with Directus"
-// @Security BearerAuth
+// @Success      200  {object}  db.Booking        "Booking detail retrieved successfully"
+// @Failure      401  {object}  ErrorResponse     "Unauthorized access | Token expired"
+// @Failure      403  {object}  ErrorResponse     "Invalid token"
+// @Failure      404  {object}  ErrorResponse     "No item with such ID"
+// @Failure      429  {object}  ErrorResponse     "You hit the rate limit"
+// @Failure      500  {object}  ErrorResponse     "Internal server error"
+// @Security     BearerAuth
 // @Router       /api/bookings/{id} [get]
 func (server *Server) GetBooking(ctx *gin.Context) {
 	// Get access token
@@ -125,8 +129,10 @@ func (server *Server) GetBooking(ctx *gin.Context) {
 		"event_id.category_id.id", "event_id.category_id.name", "event_id.category_id.description",
 		"booking_items.id", "booking_items.price", "booking_items.qr",
 		"booking_items.seat_id.id", "booking_items.seat_id.seat_number",
+		"payments.id", "payments.amount", "payments.status",
 	}
 	queryParams.Add("fields", strings.Join(fields, ","))
+	queryParams.Add("[deep][payments][_filter][status][_eq]", "success")
 
 	// Make request to Directus
 	url := fmt.Sprintf("%s/items/bookings/%s?%s", server.config.DirectusAddr, id, queryParams.Encode())
@@ -179,12 +185,14 @@ type CreateBookingResponse struct {
 // @Tags         Bookings
 // @Accept       json
 // @Produce      json
-// @Param        request        body    CreateBookingRequest   true   "Booking creation payload"
-// @Success      200  {object}  CreateBookingResponse                  "Booking created successfully"
-// @Failure      400  {object}  ErrorResponse                   "Invalid request body"
-// @Failure      401  {object}  ErrorResponse                   "Unauthorized access"
-// @Failure      500  {object}  ErrorResponse                   "Internal server error or failed to communicate with Directus"
-// @Security BearerAuth
+// @Param        request body    CreateBookingRequest   true   "Booking creation payload"
+// @Success      200  {object}   CreateBookingResponse         "Booking created successfully"
+// @Failure      400  {object}   ErrorResponse                 "Invalid request body | Invalid request data"
+// @Failure      401  {object}   ErrorResponse                 "Unauthorized access | Token expired"
+// @Failure      403  {object}   ErrorResponse                 "Invalid token"
+// @Failure      429  {object}   ErrorResponse                 "You hit the rate limit"
+// @Failure      500  {object}   ErrorResponse                 "Internal server error"
+// @Security     BearerAuth
 // @Router       /api/bookings [post]
 func (server *Server) CreateBooking(ctx *gin.Context) {
 	// Get access token and extract user
@@ -194,7 +202,7 @@ func (server *Server) CreateBooking(ctx *gin.Context) {
 	userID, err := util.ExtractIDFromToken(token)
 	if err != nil {
 		util.LOGGER.Error("POST /api/bookings: failed to get userID from access token", "error", err)
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Invalid token"})
+		ctx.JSON(http.StatusForbidden, ErrorResponse{"Invalid token"})
 		return
 	}
 

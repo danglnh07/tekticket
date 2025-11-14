@@ -81,7 +81,7 @@ func (server *Server) RegisterHandler() {
 		{
 			auth.POST("/register", server.Register)
 			auth.POST("/verify/:id", server.VerifyAccount)
-			auth.POST("/resend-otp/:id", server.SendOTP)
+			auth.POST("/resend-otp/:id", server.ResendOTP)
 			auth.POST("/login", server.Login)
 			auth.POST("/logout", server.Logout)
 			auth.POST("/refresh", server.RefreshToken)
@@ -122,7 +122,7 @@ func (server *Server) RegisterHandler() {
 		// Categories routes
 		categories := api.Group("/categories", server.AuthMiddleware())
 		{
-			categories.GET("", server.GetCategories)
+			categories.GET("", server.ListCategories)
 		}
 
 		// Event routes
@@ -143,7 +143,7 @@ func (server *Server) RegisterHandler() {
 		webhook := api.Group("/webhook")
 		{
 			webhook.POST("/telegram", server.TelegramWebhook)
-			webhook.POST("notifications", server.NotificationWebhook)
+			webhook.POST("/notifications", server.NotificationWebhook)
 			webhook.POST("/refund", server.RefundWebhook)
 			webhook.POST("/tickets/publish", server.PublishQRTickets)
 		}
@@ -231,8 +231,8 @@ func (server *Server) DirectusError(ctx *gin.Context, err error) {
 			ctx.JSON(http.StatusBadRequest, ErrorResponse{msg})
 		case db.FORBIDDEN:
 			// Forbidden is the trickiest one here. In Directus, a FORBIDDEN request can be:
-			// 1. You don't access permission to that collections/fields
-			// 2. You access into a field name that is not exists (typo, for example, 'statu' instead of 'status')
+			// 1. You don't have access permission to that collections/fields
+			// 2. You access a field name that is not exists -> typo (for example, 'statu' instead of 'status')
 			// 3. You access an item with none existing ID. Normally, this should be 404 status code, but Directus return 403 to
 			// prevent revealing which items exist, according to their docs.
 			// Because of that, for this status code, we'll assume this to be client side, and return a 404 code
@@ -244,10 +244,10 @@ func (server *Server) DirectusError(ctx *gin.Context, err error) {
 			ctx.JSON(http.StatusForbidden, ErrorResponse{"Invalid token"})
 		case db.TOKEN_EXPIRED:
 			// Obviously, client side error
-			ctx.JSON(http.StatusUnauthorized, ErrorResponse{"token expired"})
+			ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Token expired"})
 		case db.INVALID_CREDENTIALS:
 			// This should be for login. Obviously, client side error
-			ctx.JSON(http.StatusUnauthorized, ErrorResponse{"incorrect login credentials"})
+			ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Incorrect login credentials"})
 		case db.INVALID_IP:
 			// You can setup CORS for Directus, which allow a set of IPs. Normally, only our server can reach Directus,
 			// so this should be server side if server IP is not allow in Directus
@@ -259,7 +259,7 @@ func (server *Server) DirectusError(ctx *gin.Context, err error) {
 			// Invalid query string in URL. Server side error
 			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
 		case db.REQUESTS_EXCEEDED:
-			// You hit the rate limit of Directus. Although server side can also make such mistakes, it would mostly client
+			// You hit the rate limit of Directus. Although server side can also make such mistakes, it most likely client
 			// who spam the APIs
 			ctx.JSON(http.StatusTooManyRequests, ErrorResponse{"You hit the rate limit"})
 		case db.ROUTE_NOT_FOUND:

@@ -20,14 +20,16 @@ type MembershipResponse struct {
 
 // GetUserMembership godoc
 // @Summary      Get customer membership info
-// @Description  Calculate points from total payments (100,000 VND = 10 points) and determine tier
+// @Description  Get customer membership information, including tier, current point, and their current privilege
 // @Tags         Memberships
 // @Accept       json
 // @Produce      json
-// @Success      200  {object}  MembershipResponse  "Customer membership info"
-// @Failure      400  {object}  ErrorResponse        "Invalid user ID"
+// @Success      200  {object}  MembershipResponse   "Customer membership info"
+// @Failure      401  {object}  ErrorResponse        "Token expired"
+// @Failure      403  {object}  ErrorResponse        "Invalid token"
+// @Failure      429  {object}  ErrorResponse        "You hit the rate limit"
 // @Failure      500  {object}  ErrorResponse        "Internal server error"
-// @Security BearerAuth
+// @Security     BearerAuth
 // @Router       /api/memberships/me [get]
 func (server *Server) GetUserMembership(ctx *gin.Context) {
 	// Get access token
@@ -37,7 +39,7 @@ func (server *Server) GetUserMembership(ctx *gin.Context) {
 	userID, err := util.ExtractIDFromToken(token)
 	if err != nil {
 		util.LOGGER.Error("GET /api/memberships/me: failed to get user ID from access token", "error", err)
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid token"})
+		ctx.JSON(http.StatusForbidden, ErrorResponse{"Invalid token"})
 		return
 	}
 
@@ -92,10 +94,12 @@ func (server *Server) GetUserMembership(ctx *gin.Context) {
 // @Tags         Memberships
 // @Accept       json
 // @Produce      json
-// @Success      200  {array}   db.Membership    "List of memberships retrieved successfully"
-// @Failure      401  {object}  ErrorResponse     "Unauthorized access"
-// @Failure      500  {object}  ErrorResponse     "Internal server error or failed to communicate with Directus"
-// @Security BearerAuth
+// @Success      200  {array}   db.Membership        "List of memberships retrieved successfully"
+// @Failure      401  {object}  ErrorResponse        "Token expired"
+// @Failure      403  {object}  ErrorResponse        "Invalid token"
+// @Failure      429  {object}  ErrorResponse        "You hit the rate limit"
+// @Failure      500  {object}  ErrorResponse        "Internal server error"
+// @Security     BearerAuth
 // @Router       /api/memberships [get]
 func (server *Server) ListMemberships(ctx *gin.Context) {
 	// Get the list of all memberships tier

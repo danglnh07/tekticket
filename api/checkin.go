@@ -28,9 +28,11 @@ type CheckinRequest struct {
 // @Produce      json
 // @Param        request body CheckinRequest true "Check-in request payload"
 // @Success      200  {object}  SuccessMessage  "Check-in successful"
-// @Failure      400  {object}  ErrorResponse   "Invalid QR code or not within check-in timeframe"
-// @Failure      401  {object}  ErrorResponse   "Unauthorized or invalid staff role"
-// @Failure      404  {object}  ErrorResponse   "Booking item not found"
+// @Failure      400  {object}  ErrorResponse   "Invalid request body | Checkin time not started yet | Checkin time has ended | QR not available | Invalid request data"
+// @Failure      401  {object}  ErrorResponse   "Incorrect login credentials"
+// @Failure      403  {object}  ErrorResponse   "You don't have permission to perform this request"
+// @Failure      404  {object}  ErrorResponse   "No item with such ID"
+// @Failure      429  {object}  ErrorResponse   "You hit the rate limit"
 // @Failure      500  {object}  ErrorResponse   "Internal server or Directus error"
 // @Router       /api/checkins [post]
 func (server *Server) Checkin(ctx *gin.Context) {
@@ -45,20 +47,11 @@ func (server *Server) Checkin(ctx *gin.Context) {
 	// First, check if the staff information is valid
 	url := fmt.Sprintf("%s/auth/login", server.config.DirectusAddr)
 	var loginResp LoginResponse
-	status, err := db.MakeRequest(
-		"POST",
-		url,
-		map[string]any{
-			"email":    req.StaffEmail,
-			"password": req.StaffPassword,
-		},
-		server.config.DirectusStaticToken,
-		&loginResp,
-	)
-
+	body := map[string]any{"email": req.StaffEmail, "password": req.StaffPassword}
+	status, err := db.MakeRequest("POST", url, body, server.config.DirectusStaticToken, &loginResp)
 	if err != nil {
-		util.LOGGER.Error("POST /api/checkins: failed to check staff credential", "status", status, "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		util.LOGGER.Error("POST /api/checkins: staff credential checkin failed", "status", status, "error", err)
+		server.DirectusError(ctx, err)
 		return
 	}
 
@@ -70,17 +63,17 @@ func (server *Server) Checkin(ctx *gin.Context) {
 		return
 	}
 
+	if role = strings.ToLower(strings.TrimSpace(role)); role != "staff" {
+		util.LOGGER.Warn("POST /api/checkins: invalid role", "role", role)
+		ctx.JSON(http.StatusForbidden, ErrorResponse{"You don't have permission to perform this request"})
+		return
+	}
+
 	// Get staff ID
 	staffID, err := util.ExtractIDFromToken(loginResp.AccessToken)
 	if err != nil {
 		util.LOGGER.Error("POST /api/checkins: failed to get staff ID from access token", "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
-		return
-	}
-
-	if role = strings.ToLower(strings.TrimSpace(role)); role != "staff" {
-		util.LOGGER.Warn("POST /api/checkins: invalid role", "role", role)
-		ctx.JSON(http.StatusForbidden, ErrorResponse{"You don't have permission to perform this request"})
 		return
 	}
 
@@ -101,7 +94,7 @@ func (server *Server) Checkin(ctx *gin.Context) {
 	status, err = db.MakeRequest("GET", url, nil, loginResp.AccessToken, &bookingItem)
 	if err != nil {
 		util.LOGGER.Error("POST /api/checkins: failed to get booking item", "status", status, "error", err)
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		server.DirectusError(ctx, err)
 		return
 	}
 
@@ -150,13 +143,13 @@ func (server *Server) Checkin(ctx *gin.Context) {
 	// Check if QR status is still available
 	if bookingItem.Status != "available" {
 		util.LOGGER.Warn("POST /api/checkins: QR status not available", "status", bookingItem.Status)
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid QR, reject checkin"})
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"QR not available"})
 		return
 	}
 
 	// Create checkin record in database
 	url = fmt.Sprintf("%s/items/checkins", server.config.DirectusAddr)
-	body := map[string]any{
+	body = map[string]any{
 		"staff_id":        staffID,
 		"booking_item_id": bookingItem.ID,
 		"device":          req.CheckinDevice,

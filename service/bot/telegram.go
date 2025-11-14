@@ -235,7 +235,7 @@ func (bot *Chatbot) Setup() error {
 
 	// Set the start command, while keeping other existing commands untouch
 	bot.SetCommands([]Command{{
-		Command:     "/start",
+		Command:     "/register",
 		Description: description,
 	}}, SCOPE, LANG)
 

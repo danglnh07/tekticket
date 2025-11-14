@@ -61,6 +61,7 @@ type CreatePaymentRequest struct {
 type CreatePaymentResponse struct {
 	PaymentID      string `json:"payment_id"`      // Database ID
 	TransactionID  string `json:"transaction_id"`  // Stripe payment_intent_id
+	ClientSecret   string `json:"client_secret"`   // Client secret
 	PublishableKey string `json:"publishable_key"` // Stripe publishable key
 }
 
@@ -79,8 +80,11 @@ type CreatePaymentError struct {
 // @Produce      json
 // @Param        request  body  CreatePaymentRequest  true  "Payment creation payload"
 // @Success      200  {object}  CreatePaymentResponse  "Payment intent successfully created"
-// @Failure      400  {object}  CreatePaymentError     "Invalid request body or parameters"
-// @Failure      401  {object}  CreatePaymentError     "Unauthorized access"
+// @Failure      400  {object}  CreatePaymentError     "Invalid request body"
+// @Failure      401  {object}  CreatePaymentError     "Unauthorized access | Token expired"
+// @Failure      403  {object}  CreatePaymentError     "Invalid token"
+// @Failure      404  {object}  CreatePaymentError     "No item with such ID"
+// @Failure      429  {object}  CreatePaymentError     "You hit the rate limit"
 // @Failure      500  {object}  CreatePaymentError     "Internal server error or failed Stripe/Directus operation"
 // @Security     BearerAuth
 // @Router       /api/payments [post]
@@ -185,6 +189,7 @@ func (server *Server) CreatePayment(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, CreatePaymentResponse{
 		PaymentID:      paymentInfo.ID,
 		TransactionID:  intent.ID,
+		ClientSecret:   intent.ClientSecret,
 		PublishableKey: server.config.StripePublishableKey,
 	})
 }
@@ -196,8 +201,8 @@ func (server *Server) CreatePayment(ctx *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Success      200  {object}  SuccessMessage   "Payment method ID of mock visa"
-// @Failure      500  {object}  ErrorResponse                    "Internal server error"
-// @Security BearerAuth
+// @Failure      500  {object}  ErrorResponse    "Internal server error"
+// @Security     BearerAuth
 // @Router       /api/payments/method [get]
 func (server *Server) CreatePaymentMethod(ctx *gin.Context) {
 	pm, err := payment.CreatePaymentMethodFromToken("tok_visa")
@@ -265,11 +270,14 @@ type ConfirmPaymentResponse struct {
 // @Accept       json
 // @Produce      json
 // @Param        id             path      string                 true   "Payment ID"
-// @Param        request        body      ConfirmPaymentRequest   true   "Payment confirmation payload"
-// @Success      200  {object}  db.Payment                          "Payment confirmed successfully"
-// @Failure      400  {object}  ErrorResponse                    "Invalid request body"
-// @Failure      401  {object}  ErrorResponse                    "Unauthorized access"
-// @Failure      500  {object}  ErrorResponse                    "Internal server error or failed to confirm payment in Stripe/Directus"
+// @Param        request        body      ConfirmPaymentRequest  true   "Payment confirmation payload"
+// @Success      200  {object}  db.Payment                              "Payment confirmed successfully"
+// @Failure      400  {object}  ErrorResponse                           "Invalid request body"
+// @Failure      401  {object}  CreatePaymentError                      "Unauthorized access | Token expired"
+// @Failure      403  {object}  CreatePaymentError                      "Invalid token"
+// @Failure      404  {object}  CreatePaymentError                      "No item with such ID"
+// @Failure      429  {object}  CreatePaymentError                      "You hit the rate limit"
+// @Failure      500  {object}  ErrorResponse                           "Internal server error"
 // @Security BearerAuth
 // @Router       /api/payments/{id}/confirm [post]
 func (server *Server) ConfirmPayment(ctx *gin.Context) {
@@ -374,7 +382,7 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 	}
 
 	// Check if confirmation actually success. A failure can still occur, even if no error is return
-	if confirmIntent.Status != "succeeded" {
+	if confirmIntent.Status != stripe.PaymentIntentStatusSucceeded {
 		util.LOGGER.Warn("POST /api/payments/:id/confirm: payment confirmation failed", "status", confirmIntent.Status)
 
 		// Try getting the reason why payment confirmation failed
@@ -445,17 +453,17 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 // Refund godoc
 // @Summary      Refund a successful payment
 // @Description  Initiates a Stripe refund for a completed payment and records it in Directus.
-// @Description  Supports both user-requested refunds (partial refund if outside the allowed time window)
-// @Description  and automatic refunds (full refund, e.g., event cancellation).
+// @Description  This API is for user-requested refunds (partial refund if outside the allowed time window)
 // @Tags         Payments
 // @Accept       json
 // @Produce      json
 // @Param        id                path   string  true   "Payment ID"
 // @Success      200  {string}  SuccessMessage  "Refund processed successfully"
-// @Failure      400  {object}  ErrorResponse  "Invalid payment status or parameters"
-// @Failure      401  {object}  ErrorResponse  "Unauthorized access"
-// @Failure      404  {object}  ErrorResponse  "Payment not found"
-// @Failure      500  {object}  ErrorResponse  "Stripe or Directus internal error"
+// @Failure      400  {object}  ErrorResponse   "A payment must success first before refund | Refund failed"
+// @Failure      401  {object}  ErrorResponse   "Unauthorized access | Token expired"
+// @Failure      403  {object}  ErrorResponse   "Invalid token"
+// @Failure      404  {object}  ErrorResponse   "No item with such ID"
+// @Failure      429  {object}  ErrorResponse   "You hit the rate limit"
 // @Security BearerAuth
 // @Router       /api/payments/{id}/refund [post]
 func (server *Server) Refund(ctx *gin.Context) {

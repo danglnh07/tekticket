@@ -23,12 +23,13 @@ import (
 // @Accept       json
 // @Produce      json
 // @Param        id              path      string  true   "Event ID"
-// @Success      200  {object}  db.Event            "Event details retrieved successfully"
-// @Failure      400  {object}  ErrorResponse     "Invalid or missing event ID"
-// @Failure      401  {object}  ErrorResponse     "Unauthorized access"
-// @Failure      404  {object}  ErrorResponse     "Event not found or not published"
-// @Failure      500  {object}  ErrorResponse     "Internal server error or failed to communicate with Directus"
-// @Security BearerAuth
+// @Success      200  {object}  db.Event          "Event details retrieved successfully"
+// @Failure      401  {object}  ErrorResponse     "Unauthorized access | Token expired"
+// @Failure      403  {object}  ErrorResponse     "Invalid token"
+// @Failure      404  {object}  ErrorResponse     "No item with such ID"
+// @Failure      429  {object}  ErrorResponse     "You hit the rate limit"
+// @Failure      500  {object}  ErrorResponse     "Internal server error"
+// @Security     BearerAuth
 // @Router       /api/events/{id} [get]
 func (server *Server) GetEvent(ctx *gin.Context) {
 	// Get access token
@@ -36,10 +37,6 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 
 	// Get event ID by request path parameter
 	id := ctx.Param("id") // Although it was called id, it can be either event ID or slug
-	if id == "" {
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{Message: "Event ID is required"})
-		return
-	}
 
 	// Build the query URL with status fields
 	queryParams := url.Values{}
@@ -64,9 +61,10 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 	queryParams.Add("filter[status][_icontains]", "published")
 
 	// Check if 'id' is an actual UUID (search by ID), or a normal string (search by slug)
-	// If 'id' is an UUID, then we'll hit the single item endpoint (/items/events/:id), which is faster and cleaner
+	// If 'id' is an UUID, then we'll hit the single item endpoint (/items/events/{id}), which is faster and cleaner
 	// If 'id' is a string (slug), then we will have to search for every event that match this slug, and get the first item,
-	// which is slower, but better SEO
+	// which is slower
+	var event db.Event
 	if _, err := uuid.Parse(id); err != nil {
 		queryParams.Add("filter[slug][_icontains]", id)
 		url := fmt.Sprintf("%s/items/events?%s", server.config.DirectusAddr, queryParams.Encode())
@@ -85,31 +83,23 @@ func (server *Server) GetEvent(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, ErrorResponse{"No event found"})
 			return
 		}
-		event := results[0]
-
-		// Remap preview_image ID into a useable link
-		if event.PreviewImage != "" {
-			event.PreviewImage = util.CreateImageLink(server.config.ServerDomain, event.PreviewImage)
-		}
-
-		ctx.JSON(http.StatusOK, event)
+		event = results[0]
 	} else {
 		url := fmt.Sprintf("%s/items/events/%s?%s", server.config.DirectusAddr, id, queryParams.Encode())
-		var event db.Event
 		status, err := db.MakeRequest("GET", url, nil, token, &event)
 		if err != nil {
 			util.LOGGER.Error("GET /api/events/:id: failed to get event from Directus", "status", status, "error", err, "id", id)
 			server.DirectusError(ctx, err)
 			return
 		}
-
-		// Remap preview_image ID into a useable link
-		if event.PreviewImage != "" {
-			event.PreviewImage = util.CreateImageLink(server.config.ServerDomain, event.PreviewImage)
-		}
-
-		ctx.JSON(http.StatusOK, event)
 	}
+
+	// Remap preview_image ID into a useable link
+	if event.PreviewImage != "" {
+		event.PreviewImage = util.CreateImageLink(server.config.ServerDomain, event.PreviewImage)
+	}
+
+	ctx.JSON(http.StatusOK, event)
 }
 
 // Helper method: calculate the smallest base price of a ticket belong to an event
@@ -172,10 +162,12 @@ type EventInfo struct {
 // @Param        limit        query     int     false  "Limit number of results (default: 50)"
 // @Param        offset       query     int     false  "Offset for pagination (default: 0)"
 // @Param        sort         query     string  false  "Sort field (default: -date_created). Use - prefix for descending"
-// @Success      200  {array}   EventInfo           "List of events retrieved successfully"
-// @Failure      401  {object}  ErrorResponse       "Unauthorized access"
-// @Failure      500  {object}  ErrorResponse       "Internal server error"
-// @Security BearerAuth
+// @Success      200  {array}   EventInfo         "List of events retrieved successfully"
+// @Failure      401  {object}  ErrorResponse     "Unauthorized access | Token expired"
+// @Failure      403  {object}  ErrorResponse     "Invalid token"
+// @Failure      429  {object}  ErrorResponse     "You hit the rate limit"
+// @Failure      500  {object}  ErrorResponse     "Internal server error"
+// @Security     BearerAuth
 // @Router       /api/events [get]
 func (server *Server) ListEvents(ctx *gin.Context) {
 	// Get access token
@@ -286,12 +278,14 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 // @Tags         Events
 // @Accept       json
 // @Produce      json
-// @Success      200  {array}  db.Category "List of categories retrieved successfully"
-// @Failure      401  {object}  ErrorResponse         "Unauthorized access"
-// @Failure      500  {object}  ErrorResponse         "Internal server error"
-// @Security BearerAuth
+// @Success      200  {array}   db.Category       "List of categories retrieved successfully"
+// @Failure      401  {object}  ErrorResponse     "Unauthorized access | Token expired"
+// @Failure      403  {object}  ErrorResponse     "Invalid token"
+// @Failure      429  {object}  ErrorResponse     "You hit the rate limit"
+// @Failure      500  {object}  ErrorResponse     "Internal server error"
+// @Security     BearerAuth
 // @Router       /api/categories [get]
-func (server *Server) GetCategories(ctx *gin.Context) {
+func (server *Server) ListCategories(ctx *gin.Context) {
 	// Get access token
 	token := server.GetToken(ctx)
 	if token == "" {
@@ -303,7 +297,7 @@ func (server *Server) GetCategories(ctx *gin.Context) {
 	queryParams := url.Values{}
 	queryParams.Add("fields", "id,name,description")
 	queryParams.Add("sort", "name")
-	queryParams.Add("limit", "-1")
+	queryParams.Add("limit", "-1") // Category wouldn't be much, so we will get all the category by setting limit = -1
 	queryParams.Add("filter[status][_icontains]", "published")
 
 	directusURL := fmt.Sprintf("%s/items/categories?%s", server.config.DirectusAddr, queryParams.Encode())
