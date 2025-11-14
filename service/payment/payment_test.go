@@ -92,6 +92,20 @@ func TestConfirmPayment(t *testing.T) {
 	ConfirmPayment(t, intent, method)
 }
 
+// Test get payment intent
+func TestGetPaymentIntent(t *testing.T) {
+	// Create a payment intent
+	amount := minAmount + rand.Int63n(maxAmount-minAmount+1)
+	intent := CreatePayment(t, amount)
+
+	// Get payment intent
+	getIntent, err := GetPaymentIntent(intent.ID)
+	require.NoError(t, err)
+	require.NotNil(t, getIntent)
+	require.Equal(t, intent.ID, getIntent.ID)
+	require.Equal(t, stripe.PaymentIntentStatusRequiresPaymentMethod, getIntent.Status)
+}
+
 // Test partial refund
 func TestPartialRefund(t *testing.T) {
 	amount := minAmount + rand.Int63n(maxAmount-minAmount+1)
