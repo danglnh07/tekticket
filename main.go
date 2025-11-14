@@ -34,7 +34,6 @@ func main() {
 
 	// Connect to database and Redis
 	queries := db.NewQueries()
-	queries.ConnectDB(config.DirectusAddr, config.DirectusStaticToken)
 
 	// Connect Redis
 	ctx := context.Background()
@@ -45,12 +44,7 @@ func main() {
 
 	// Create dependencies for server
 	distributor := worker.NewRedisTaskDistributor(asynq.RedisClientOpt{Addr: config.RedisAddr})
-	cld, err := uploader.NewCld(config.CloudStorageName, config.CloudStorageKey, config.CloudStorageSecret)
-	if err != nil {
-		util.LOGGER.Error("failed to initialize Cloudinary service", "error", err)
-		os.Exit(1)
-	}
-	uploadService := uploader.NewUploader(cld, config)
+	uploadService := uploader.NewUploader(config.DirectusAddr, config.DirectusStaticToken)
 	mailService := notify.NewEmailService(config.Email, config.AppPassword)
 	bot, err := bot.NewChatbot(
 		fmt.Sprintf("%s/bot%s", config.DockerTelegramDomain, config.TelegramBotToken),

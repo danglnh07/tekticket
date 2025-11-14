@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	// "strconv"
 	"tekticket/db"
 	"tekticket/util"
 
@@ -21,28 +20,26 @@ type MembershipResponse struct {
 
 // GetUserMembership godoc
 // @Summary      Get customer membership info
-// @Description  Calculate points from total payments (100,000 VND = 10 points) and determine tier
+// @Description  Get customer membership information, including tier, current point, and their current privilege
 // @Tags         Memberships
 // @Accept       json
 // @Produce      json
-// @Success      200  {object}  MembershipResponse  "Customer membership info"
-// @Failure      400  {object}  ErrorResponse        "Invalid user ID"
+// @Success      200  {object}  MembershipResponse   "Customer membership info"
+// @Failure      401  {object}  ErrorResponse        "Token expired"
+// @Failure      403  {object}  ErrorResponse        "Invalid token"
+// @Failure      429  {object}  ErrorResponse        "You hit the rate limit"
 // @Failure      500  {object}  ErrorResponse        "Internal server error"
-// @Security BearerAuth
+// @Security     BearerAuth
 // @Router       /api/memberships/me [get]
 func (server *Server) GetUserMembership(ctx *gin.Context) {
 	// Get access token
 	token := server.GetToken(ctx)
-	if token == "" {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
-		return
-	}
 
 	// Get user ID
 	userID, err := util.ExtractIDFromToken(token)
 	if err != nil {
 		util.LOGGER.Error("GET /api/memberships/me: failed to get user ID from access token", "error", err)
-		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid token"})
+		ctx.JSON(http.StatusForbidden, ErrorResponse{"Invalid token"})
 		return
 	}
 
@@ -57,8 +54,8 @@ func (server *Server) GetUserMembership(ctx *gin.Context) {
 	var logs []db.UserMembershipLog
 	status, err := db.MakeRequest("GET", directusURL, nil, token, &logs)
 	if err != nil {
-		util.LOGGER.Error("GET api/memberships/me: failed to make request to Directus", "error", err)
-		ctx.JSON(status, ErrorResponse{err.Error()})
+		util.LOGGER.Error("GET api/memberships/me: failed to make request to Directus", "status", status, "error", err)
+		server.DirectusError(ctx, err)
 		return
 	}
 
@@ -82,8 +79,6 @@ func (server *Server) GetUserMembership(ctx *gin.Context) {
 		if membership.BasePoint <= result.Points {
 			result.Tier = membership.Tier
 			result.EarlyBuyTime = membership.EarlyBuyTime
-			// discount, _ := strconv.ParseFloat(membership.Discount, 64)
-			// result.Discount = discount
 			result.Discount = float64(membership.Discount)
 		} else {
 			break
@@ -99,10 +94,12 @@ func (server *Server) GetUserMembership(ctx *gin.Context) {
 // @Tags         Memberships
 // @Accept       json
 // @Produce      json
-// @Success      200  {array}   db.Membership    "List of memberships retrieved successfully"
-// @Failure      401  {object}  ErrorResponse     "Unauthorized access"
-// @Failure      500  {object}  ErrorResponse     "Internal server error or failed to communicate with Directus"
-// @Security BearerAuth
+// @Success      200  {array}   db.Membership        "List of memberships retrieved successfully"
+// @Failure      401  {object}  ErrorResponse        "Token expired"
+// @Failure      403  {object}  ErrorResponse        "Invalid token"
+// @Failure      429  {object}  ErrorResponse        "You hit the rate limit"
+// @Failure      500  {object}  ErrorResponse        "Internal server error"
+// @Security     BearerAuth
 // @Router       /api/memberships [get]
 func (server *Server) ListMemberships(ctx *gin.Context) {
 	// Get the list of all memberships tier
@@ -118,20 +115,18 @@ func (server *Server) ListMemberships(ctx *gin.Context) {
 func (server *Server) listMemberships(ctx *gin.Context) ([]db.Membership, error) {
 	// Get access token
 	token := server.GetToken(ctx)
-	if token == "" {
-		ctx.JSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
-		return nil, fmt.Errorf("access token missing")
-	}
 
 	// Get the list of all memberships. It should be a short list, so we don't need to provide any paging here
 	url := fmt.Sprintf("%s/items/memberships?filter[status][_eq]=published&sort=base_point", server.config.DirectusAddr)
 	var memberships = []db.Membership{} // Make sure it's an empty slice instead of nil for better JSON returned
 	status, err := db.MakeRequest("GET", url, nil, token, &memberships)
 	if err != nil {
-		util.LOGGER.Error(fmt.Sprintf("%s %s: failed to get the list of all memberships", ctx.Request.Method, ctx.FullPath()),
+		util.LOGGER.Error(
+			fmt.Sprintf("%s %s: failed to get the list of all memberships", ctx.Request.Method, ctx.FullPath()),
+			"status", status,
 			"error", err,
 		)
-		ctx.JSON(status, ErrorResponse{err.Error()})
+		server.DirectusError(ctx, err)
 		return nil, err
 	}
 

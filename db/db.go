@@ -5,25 +5,17 @@ import (
 	"errors"
 	"time"
 
-	"github.com/altipla-consulting/directus-go"
 	"github.com/redis/go-redis/v9"
 )
 
 // The queries object for interacting with database and cache
 type Queries struct {
-	Client *directus.Client
-	Cache  *redis.Client
+	Cache *redis.Client
 }
 
 // Constructor for Queries
 func NewQueries() *Queries {
 	return &Queries{}
-}
-
-// Connect to Directus client
-func (queries *Queries) ConnectDB(instance, token string) {
-	client := directus.NewClient(instance, token)
-	queries.Client = client
 }
 
 // Connect to Redis

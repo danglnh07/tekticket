@@ -38,3 +38,26 @@ func (service *AblyService) Publish(ctx context.Context, channelName, eventName 
 	// Publish message
 	return channel.Publish(ctx, eventName, message)
 }
+
+// This method is purely for test, it should be the client responsible to fetch this
+func (service *AblyService) getMessageHistory(ctx context.Context, channelName string) ([]*ably.Message, error) {
+	channel := service.client.Channels.Get(channelName)
+
+	pages, err := channel.History().Pages(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch the first page
+	if !pages.Next(ctx) {
+		// Check for error
+		if err := pages.Err(); err != nil {
+			return nil, err
+		}
+
+		// No messages available
+		return nil, nil
+	}
+
+	return pages.Items(), nil
+}

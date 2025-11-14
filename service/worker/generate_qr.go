@@ -1,14 +1,14 @@
 package worker
 
 import (
-	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"tekticket/db"
 	"tekticket/util"
+
+	"github.com/google/uuid"
 )
 
 type PublishQRTicketPayload struct {
@@ -82,7 +82,7 @@ func (processor *RedisTaskProcessor) PublishQRTickets(payload PublishQRTicketPay
 			}
 
 			// Upload image
-			status, respID, err := processor.uploadService.UploadImage(context.Background(), bytes.NewReader(qr))
+			respID, status, err := processor.uploadService.Upload(uuid.New().String(), qr)
 			if err != nil {
 				util.LOGGER.Error(
 					"failed to upload QR into cloudinary",

@@ -17,7 +17,7 @@ const docTemplate = `{
     "paths": {
         "/api/auth/login": {
             "post": {
-                "description": "Authenticate user with username and password. Returns access and refresh JWT tokens.",
+                "description": "Authenticates a user with Directus and returns an access token and refresh token.",
                 "consumes": [
                     "application/json"
                 ],
@@ -30,7 +30,7 @@ const docTemplate = `{
                 "summary": "User login",
                 "parameters": [
                     {
-                        "description": "Login request body (username, password)",
+                        "description": "User login credentials",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -41,19 +41,25 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful login with access and refresh tokens",
+                        "description": "Login successful",
                         "schema": {
                             "$ref": "#/definitions/api.LoginResponse"
                         }
                     },
                     "400": {
-                        "description": "Invalid request body or incorrect credentials",
+                        "description": "Invalid request body",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
-                    "403": {
-                        "description": "Account not active, cannot login",
+                    "401": {
+                        "description": "Incorrect login credentials",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -69,7 +75,7 @@ const docTemplate = `{
         },
         "/api/auth/logout": {
             "post": {
-                "description": "Invalidate all tokens for logout",
+                "description": "Logs out a user by invalidating the provided refresh token in Directus.",
                 "consumes": [
                     "application/json"
                 ],
@@ -79,10 +85,10 @@ const docTemplate = `{
                 "tags": [
                     "Auth"
                 ],
-                "summary": "User logout",
+                "summary": "Logout user",
                 "parameters": [
                     {
-                        "description": "Logout body: refresh token",
+                        "description": "Refresh token for logout",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -93,19 +99,25 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful logout, all tokens is invalidate",
+                        "description": "Logout success",
                         "schema": {
                             "$ref": "#/definitions/api.SuccessMessage"
                         }
                     },
                     "400": {
-                        "description": "Invalid request body or incorrect credentials",
+                        "description": "Invalid request body",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "403": {
-                        "description": "Account not active, cannot login",
+                        "description": "Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -149,13 +161,25 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "No account with this email or invalid input",
+                        "description": "No account with this email | Email cannot be empty",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No item with such ID",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error or failed to communicate with Directus",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -165,7 +189,7 @@ const docTemplate = `{
         },
         "/api/auth/password/reset": {
             "post": {
-                "description": "Resets the user's password using a valid password reset token.\nThe token must be provided in the request body and is validated for authenticity and expiration.",
+                "description": "Resets the user's password using a valid reset token. The token must be verified before updating the password.",
                 "consumes": [
                     "application/json"
                 ],
@@ -178,7 +202,7 @@ const docTemplate = `{
                 "summary": "Reset user password",
                 "parameters": [
                     {
-                        "description": "Password reset request body containing token and new password",
+                        "description": "Token and new password",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -189,19 +213,25 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Password changed successfully",
+                        "description": "Password change successfully",
                         "schema": {
                             "$ref": "#/definitions/api.SuccessMessage"
                         }
                     },
                     "400": {
-                        "description": "Invalid or expired token",
+                        "description": "Invalid request body | Invalid request data",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error or failed to communicate with Directus",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -211,7 +241,7 @@ const docTemplate = `{
         },
         "/api/auth/refresh": {
             "post": {
-                "description": "Uses the provided refresh token to obtain a new access token and refresh token from Directus.",
+                "description": "Refreshes the access token using a valid Directus refresh token.",
                 "consumes": [
                     "application/json"
                 ],
@@ -221,10 +251,10 @@ const docTemplate = `{
                 "tags": [
                     "Auth"
                 ],
-                "summary": "Refresh authentication tokens",
+                "summary": "Refresh access token",
                 "parameters": [
                     {
-                        "description": "Request body containing the refresh token",
+                        "description": "Refresh token for refreshing access token",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -235,7 +265,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "New tokens generated successfully",
+                        "description": "Token refresh success",
                         "schema": {
                             "$ref": "#/definitions/api.LoginResponse"
                         }
@@ -246,8 +276,20 @@ const docTemplate = `{
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
+                    "403": {
+                        "description": "Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
                     "500": {
-                        "description": "Internal server error or failed to communicate with Directus",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -257,7 +299,7 @@ const docTemplate = `{
         },
         "/api/auth/register": {
             "post": {
-                "description": "Creates a new user account with the provided username, email, phone, password, and role.\nSends a verification email to activate the account.",
+                "description": "Creates a new user in Directus and triggers a verification email. The email must be unique per role.",
                 "consumes": [
                     "application/json"
                 ],
@@ -270,7 +312,7 @@ const docTemplate = `{
                 "summary": "Register a new user account",
                 "parameters": [
                     {
-                        "description": "Registration request body",
+                        "description": "User registration information",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -280,20 +322,26 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "Create account success with status inactive",
+                    "200": {
+                        "description": "Account created successfully",
                         "schema": {
                             "$ref": "#/definitions/api.RegisterResponse"
                         }
                     },
                     "400": {
-                        "description": "Invalid request body or existing username/email/phone",
+                        "description": "Invalid request body | Invalid role value | Email already registered | Invalid request data",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error or failed to send verification email",
+                        "description": "Internal server error | Failed to send verification email",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -331,7 +379,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid ID or account not inactive",
+                        "description": "Account status not unverified",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No item with such ID",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -382,7 +442,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid OTP, expired code, or ID mismatch",
+                        "description": "Invalid OTP code | OTP expired | ID mismatch with OTP",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -403,7 +469,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieves the list of completed bookings for the authenticated user, including event and category details.",
+                "description": "Retrieves the list of completed bookings for the authenticated user, including event, category and payment.",
                 "consumes": [
                     "application/json"
                 ],
@@ -447,20 +513,26 @@ const docTemplate = `{
                             }
                         }
                     },
-                    "400": {
-                        "description": "Invalid token or parameters",
+                    "401": {
+                        "description": "Unauthorized access | Token expired",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
-                    "401": {
-                        "description": "Unauthorized access",
+                    "403": {
+                        "description": "Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error or failed to communicate with Directus",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -503,19 +575,31 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid request body",
+                        "description": "Invalid request body | Invalid request data",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized access",
+                        "description": "Unauthorized access | Token expired",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error or failed to communicate with Directus",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -557,26 +641,32 @@ const docTemplate = `{
                             "$ref": "#/definitions/db.Booking"
                         }
                     },
-                    "400": {
-                        "description": "Invalid request parameters",
+                    "401": {
+                        "description": "Unauthorized access | Token expired",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
-                    "401": {
-                        "description": "Unauthorized access",
+                    "403": {
+                        "description": "Invalid token",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "404": {
-                        "description": "Booking not found",
+                        "description": "No item with such ID",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error or failed to communicate with Directus",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -613,7 +703,19 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized access",
+                        "description": "Unauthorized access | Token expired",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -659,19 +761,31 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid QR code or not within check-in timeframe",
+                        "description": "Invalid request body | Checkin time not started yet | Checkin time has ended | QR not available | Invalid request data",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized or invalid staff role",
+                        "description": "Incorrect login credentials",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "You don't have permission to perform this request",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "404": {
-                        "description": "Booking item not found",
+                        "description": "No item with such ID",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -724,18 +838,6 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "description": "Filter by minimum base price",
-                        "name": "min_price",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Filter by maximum base price",
-                        "name": "max_price",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
                         "description": "Limit number of results (default: 50)",
                         "name": "limit",
                         "in": "query"
@@ -764,7 +866,19 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized access",
+                        "description": "Unauthorized access | Token expired",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -812,26 +926,32 @@ const docTemplate = `{
                             "$ref": "#/definitions/db.Event"
                         }
                     },
-                    "400": {
-                        "description": "Invalid or missing event ID",
+                    "401": {
+                        "description": "Unauthorized access | Token expired",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
-                    "401": {
-                        "description": "Unauthorized access",
+                    "403": {
+                        "description": "Invalid token",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "404": {
-                        "description": "Event not found or not published",
+                        "description": "No item with such ID",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error or failed to communicate with Directus",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -868,13 +988,25 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized access",
+                        "description": "Token expired",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error or failed to communicate with Directus",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -889,7 +1021,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Calculate points from total payments (100,000 VND = 10 points) and determine tier",
+                "description": "Get customer membership information, including tier, current point, and their current privilege",
                 "consumes": [
                     "application/json"
                 ],
@@ -907,60 +1039,26 @@ const docTemplate = `{
                             "$ref": "#/definitions/api.MembershipResponse"
                         }
                     },
-                    "400": {
-                        "description": "Invalid user ID",
+                    "401": {
+                        "description": "Token expired",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/notifications/webhook": {
-            "post": {
-                "description": "Receives webhook payloads from Directus flows and dispatches notifications to various destinations (in-app, Telegram, email) using background workers.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Notifications"
-                ],
-                "summary": "Handle Directus notification webhook",
-                "parameters": [
-                    {
-                        "description": "Notification webhook payload",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/api.NotificationRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Notification dispatched successfully",
-                        "schema": {
-                            "$ref": "#/definitions/api.SuccessMessage"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid request body or missing required destinations",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error or failed to distribute background task",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -1005,13 +1103,31 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid request body or parameters",
+                        "description": "Invalid request body",
                         "schema": {
                             "$ref": "#/definitions/api.CreatePaymentError"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized access",
+                        "description": "Unauthorized access | Token expired",
+                        "schema": {
+                            "$ref": "#/definitions/api.CreatePaymentError"
+                        }
+                    },
+                    "403": {
+                        "description": "Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/api.CreatePaymentError"
+                        }
+                    },
+                    "404": {
+                        "description": "No item with such ID",
+                        "schema": {
+                            "$ref": "#/definitions/api.CreatePaymentError"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
                         "schema": {
                             "$ref": "#/definitions/api.CreatePaymentError"
                         }
@@ -1027,6 +1143,11 @@ const docTemplate = `{
         },
         "/api/payments/method": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Create payment method for confirm payment. This API is solely for internal testing, not to be consumed by any client",
                 "consumes": [
                     "application/json"
@@ -1104,13 +1225,31 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized access",
+                        "description": "Unauthorized access | Token expired",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/api.CreatePaymentError"
+                        }
+                    },
+                    "403": {
+                        "description": "Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/api.CreatePaymentError"
+                        }
+                    },
+                    "404": {
+                        "description": "No item with such ID",
+                        "schema": {
+                            "$ref": "#/definitions/api.CreatePaymentError"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
+                        "schema": {
+                            "$ref": "#/definitions/api.CreatePaymentError"
                         }
                     },
                     "500": {
-                        "description": "Internal server error or failed to confirm payment in Stripe/Directus",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -1125,7 +1264,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Initiates a Stripe refund for a completed payment and records it in Directus.\nSupports both user-requested refunds (partial refund if outside the allowed time window)\nand automatic refunds (full refund, e.g., event cancellation).",
+                "description": "Initiates a Stripe refund for a completed payment and records it in Directus.\nThis API is for user-requested refunds (partial refund if outside the allowed time window)",
                 "consumes": [
                     "application/json"
                 ],
@@ -1143,12 +1282,6 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "Whether the refund is user-requested (may affect refund amount)",
-                        "name": "is_user_requested",
-                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1159,86 +1292,31 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid payment status or parameters",
+                        "description": "A payment must success first before refund | Refund failed",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized access",
+                        "description": "Unauthorized access | Token expired",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Invalid token",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "404": {
-                        "description": "Payment not found",
+                        "description": "No item with such ID",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
-                    "500": {
-                        "description": "Stripe or Directus internal error",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/payments/{id}/retry-qr-publishing": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Re-publishes QR codes for all booking items associated with a successful payment.\nUsed when QR generation failed after payment confirmation.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Payment"
-                ],
-                "summary": "Retry QR ticket publishing for a completed payment",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Payment ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "QR publishing retried successfully",
-                        "schema": {
-                            "$ref": "#/definitions/api.SuccessMessage"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid payment status or bad request",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized access",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Payment ID not found",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server or task distribution error",
+                    "429": {
+                        "description": "You hit the rate limit",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -1266,19 +1344,25 @@ const docTemplate = `{
                 "summary": "User profile",
                 "responses": {
                     "200": {
-                        "description": "user profile",
+                        "description": "User profile",
                         "schema": {
                             "$ref": "#/definitions/api.ProfileResponse"
                         }
                     },
-                    "400": {
-                        "description": "Invalid request body or incorrect credentials",
+                    "401": {
+                        "description": "Token expired",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "403": {
-                        "description": "Account not active, cannot login",
+                        "description": "Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -1297,7 +1381,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Updates the current user's profile information including first name, last name, password, and avatar.\nThe avatar is expected to be a base64-encoded image, which will be uploaded to cloud storage and replaced with its secure URL.",
+                "description": "Updates the current user's profile information including first name, last name, password, and avatar.\nThe avatar is expected to be a base64-encoded image",
                 "consumes": [
                     "application/json"
                 ],
@@ -1332,8 +1416,72 @@ const docTemplate = `{
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
+                    "401": {
+                        "description": "Token expired",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
                     "500": {
                         "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/webhook/notifications": {
+            "post": {
+                "description": "Receives webhook payloads from Directus flows and dispatches notifications to various destinations (in-app, Telegram, email) using background workers.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notifications"
+                ],
+                "summary": "Handle Directus notification webhook",
+                "parameters": [
+                    {
+                        "description": "Notification webhook payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.NotificationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Notification dispatched successfully",
+                        "schema": {
+                            "$ref": "#/definitions/api.SuccessMessage"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body or missing required destinations",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error or failed to distribute background task",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -1473,7 +1621,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "payment_id": {
-                    "description": "This is used for retry when payment failed",
+                    "description": "Used for retry",
                     "type": "string"
                 }
             }
@@ -1482,12 +1630,19 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "client_secret": {
+                    "description": "Client secret",
                     "type": "string"
                 },
-                "payment": {
-                    "$ref": "#/definitions/db.Payment"
+                "payment_id": {
+                    "description": "Database ID",
+                    "type": "string"
                 },
                 "publishable_key": {
+                    "description": "Stripe publishable key",
+                    "type": "string"
+                },
+                "transaction_id": {
+                    "description": "Stripe payment_intent_id",
                     "type": "string"
                 }
             }
@@ -1903,7 +2058,6 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "discount": {
-                    "description": "Directus will return a string even if they are set as decimal",
                     "type": "number"
                 },
                 "early_buy_time": {
@@ -2064,6 +2218,38 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
+                },
+                "ticket_selling_schedules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/db.TicketSellingSchedule"
+                    }
+                }
+            }
+        },
+        "db.TicketSellingSchedule": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "integer"
+                },
+                "end_selling_time": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "start_selling_time": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "ticket_id": {
+                    "$ref": "#/definitions/db.Ticket"
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },

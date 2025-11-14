@@ -43,11 +43,6 @@ func TestMain(m *testing.M) {
 	mailService := notify.NewEmailService(os.Getenv("EMAIL"), os.Getenv("APP_PASSWORD"))
 	bot, err := bot.NewChatbot(os.Getenv("TELEGRAM_BOT_TOKEN"), fmt.Sprintf("%s/api/webhook/telegram", os.Getenv("SERVER_DOMAIN")))
 
-	cld, err := uploader.NewCld(os.Getenv("CLOUDINARY_NAME"), os.Getenv("CLOUDINARY_APIKEY"), os.Getenv("CLOUDINARY_APISECRET"))
-	if err != nil {
-		util.LOGGER.Error("failed to create cloudinary service", "error", err)
-		os.Exit(1)
-	}
 	util.LOGGER.Info(
 		"env",
 		"directus addr", os.Getenv("DIRECTUS_ADDR"),
@@ -62,7 +57,7 @@ func TestMain(m *testing.M) {
 		DirectusAddr:        os.Getenv("DIRECTUS_ADDR"),
 		DirectusStaticToken: os.Getenv("DIRECTUS_STATIC_TOKEN"),
 	}
-	uploadService := uploader.NewUploader(cld, config)
+	uploadService := uploader.NewUploader(config.DirectusAddr, config.DirectusStaticToken)
 
 	processor = NewRedisTaskProcessor(
 		asynq.RedisClientOpt{Addr: os.Getenv("REDIS_ADDR")},

@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,6 +20,17 @@ func (server *Server) CORSMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		ctx.Next()
+	}
+}
+
+// Authorization middleware: check if client provided access token for protected API
+func (server *Server) AuthMiddleware() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		token := strings.TrimPrefix(ctx.Request.Header.Get("Authorization"), "Bearer ")
+		if token == "" {
+			ctx.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{"Unauthorized access"})
+		}
 		ctx.Next()
 	}
 }

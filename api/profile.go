@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"tekticket/util"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type ProfileResponse struct {
@@ -25,10 +27,11 @@ type ProfileResponse struct {
 // @Tags         Profile
 // @Accept       json
 // @Produce      json
-// @Success      200  {object}  ProfileResponse  "user profile"
-// @Failure      400  {object}  ErrorResponse  "Invalid request body or incorrect credentials"
-// @Failure      403  {object}  ErrorResponse  "Account not active, cannot login"
-// @Failure      500  {object}  ErrorResponse  "Internal server error"
+// @Success      200  {object}  ProfileResponse      "User profile"
+// @Failure      401  {object}  ErrorResponse        "Token expired"
+// @Failure      403  {object}  ErrorResponse        "Invalid token"
+// @Failure      429  {object}  ErrorResponse        "You hit the rate limit"
+// @Failure      500  {object}  ErrorResponse        "Internal server error"
 // @Security     BearerAuth
 // @Router       /api/profile [get]
 func (server *Server) GetProfile(ctx *gin.Context) {
@@ -37,8 +40,8 @@ func (server *Server) GetProfile(ctx *gin.Context) {
 	var profile ProfileResponse
 	status, err := db.MakeRequest("GET", url, nil, server.GetToken(ctx), &profile)
 	if err != nil {
-		util.LOGGER.Error("GET /api/profile: failed to make request to Directus", "error", err)
-		ctx.JSON(status, ErrorResponse{err.Error()})
+		util.LOGGER.Error("GET /api/profile: failed to get user profile", "status", status, "error", err)
+		server.DirectusError(ctx, err)
 		return
 	}
 
@@ -61,20 +64,24 @@ type UpdateProfileRequest struct {
 // UpdateProfile godoc
 // @Summary      Update user profile
 // @Description  Updates the current user's profile information including first name, last name, password, and avatar.
-// @Description  The avatar is expected to be a base64-encoded image, which will be uploaded to cloud storage and replaced with its secure URL.
+// @Description  The avatar is expected to be a base64-encoded image
 // @Tags         Profile
 // @Accept       json
 // @Produce      json
-// @Param        request  body      UpdateProfileRequest  true  "Profile update request body"
-// @Success      200  {object}  ProfileResponse  "Profile updated successfully"
-// @Failure      400  {object}  ErrorResponse   "Invalid request body"
-// @Failure      500  {object}  ErrorResponse   "Internal server error"
+// @Param        request  body  UpdateProfileRequest true  "Profile update request body"
+// @Success      200  {object}  ProfileResponse            "Profile updated successfully"
+// @Failure      400  {object}  ErrorResponse              "Invalid request body"
+// @Failure      401  {object}  ErrorResponse              "Token expired"
+// @Failure      403  {object}  ErrorResponse              "Invalid token"
+// @Failure      429  {object}  ErrorResponse              "You hit the rate limit"
+// @Failure      500  {object}  ErrorResponse              "Internal server error"
 // @Security     BearerAuth
 // @Router       /api/profile [put]
 func (server *Server) UpdateProfile(ctx *gin.Context) {
 	// Get request body
 	var req UpdateProfileRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
+		util.LOGGER.Warn("PUT /api/profile: failed to bind request body", "error", err)
 		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid request body"})
 		return
 	}
@@ -99,7 +106,15 @@ func (server *Server) UpdateProfile(ctx *gin.Context) {
 	}
 
 	if req.Avatar = strings.TrimSpace(req.Avatar); req.Avatar != "" {
-		status, avatarID, err := server.uploadService.UploadImage(ctx, req.Avatar)
+		// Read the base64 image into a slice of byte
+		image, err := base64.StdEncoding.DecodeString(req.Avatar)
+		if err != nil {
+			util.LOGGER.Warn("PUT /api/profile: failed to decode avatar", "error", err)
+			ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid base64 image value for avatar"})
+			return
+		}
+
+		avatarID, status, err := server.uploadService.Upload(uuid.New().String(), image) // The image doesn't really matter here
 		if err != nil {
 			util.LOGGER.Error("PUT /api/profile: failed to upload new avatar image", "status", status, "error", err)
 			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"failed to handle avatar image"})
@@ -114,11 +129,15 @@ func (server *Server) UpdateProfile(ctx *gin.Context) {
 	var profile ProfileResponse
 	status, err := db.MakeRequest("PATCH", url, data, server.GetToken(ctx), &profile)
 	if err != nil {
-		util.LOGGER.Error("PUT /api/profile: failed to make request into Directus", "error", err)
-		ctx.JSON(status, ErrorResponse{err.Error()})
+		util.LOGGER.Error("PUT /api/profile: failed to update user profile", "status", status, "error", err)
+		server.DirectusError(ctx, err)
 		return
 	}
 
-	profile.Avatar = util.CreateImageLink(server.config.ServerDomain, profile.Avatar)
+	// Remap image link
+	if profile.Avatar != "" {
+		profile.Avatar = util.CreateImageLink(server.config.ServerDomain, profile.Avatar)
+	}
+
 	ctx.JSON(http.StatusOK, profile)
 }
