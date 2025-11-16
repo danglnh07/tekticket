@@ -62,8 +62,14 @@ func NewRedisTaskProcessor(
 	bot *bot.Chatbot,
 	config *util.Config,
 ) TaskProcessor {
+	// Setup config for asynq server
+	asynqServerConfig := asynq.Config{
+		Concurrency: config.MaxWorkers,
+		Queues:      Queues,
+	}
+
 	return &RedisTaskProcessor{
-		server:        asynq.NewServer(redisOpts, asynq.Config{Queues: Queues}),
+		server:        asynq.NewServer(redisOpts, asynqServerConfig),
 		queries:       queries,
 		mailService:   mailService,
 		uploadService: uploadService,

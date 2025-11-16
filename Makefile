@@ -15,4 +15,4 @@ sonar:
 	-e SONAR_SCANNER_OPTS="-Dsonar.projectKey=tekticket -Dsonar.sources=. -Dsonar.go.coverage.reportPaths=coverage.out" \
     -e SONAR_TOKEN=${SONAR_TOKEN} -v "$(PWD):/usr/src" sonarsource/sonar-scanner-cli
 
-.PHONY: test run build
+.PHONY: test run build sonar 
