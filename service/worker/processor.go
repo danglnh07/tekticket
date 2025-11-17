@@ -31,7 +31,9 @@ func IsQueueLevelExists(queue string) bool {
 
 // Task processor interface
 type TaskProcessor interface {
-	Start() error
+	PrepareHandler() *asynq.ServeMux
+	Start(mux *asynq.ServeMux) error
+	Scale(workers int, redisAddr string) error
 }
 
 // Redis task processor
@@ -80,7 +82,7 @@ func NewRedisTaskProcessor(
 }
 
 // Method to start the worker server
-func (processor *RedisTaskProcessor) Start() error {
+func (processor *RedisTaskProcessor) PrepareHandler() *asynq.ServeMux {
 	mux := asynq.NewServeMux()
 
 	// Setup handler
@@ -212,5 +214,26 @@ func (processor *RedisTaskProcessor) Start() error {
 		return nil
 	})
 
+	return mux
+}
+
+func (processor *RedisTaskProcessor) Start(mux *asynq.ServeMux) error {
 	return processor.server.Start(mux)
+}
+
+func (processor *RedisTaskProcessor) Scale(workers int, redisAddr string) error {
+	// First, we will start another asynq server with the workers defined
+	server := asynq.NewServer(asynq.RedisClientOpt{Addr: redisAddr}, asynq.Config{
+		Concurrency: workers,
+		Queues:      Queues,
+	})
+
+	// Shutdown the old server
+	processor.server.Shutdown()
+
+	// Assign the new server to processor
+	processor.server = server
+
+	// Start server
+	return processor.Start(processor.PrepareHandler())
 }

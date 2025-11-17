@@ -494,7 +494,7 @@ func (server *Server) Refund(ctx *gin.Context) {
 	// Check if this payment can get a full refund, or just a partial refund based on the payment created time
 	amount := paymentInfo.Amount
 	if time.Time(*paymentInfo.DateCreated).Add(time.Hour * time.Duration(server.config.MaxFullRefundHours)).Before(time.Now()) {
-		amount /= 2
+		amount = int(float64(amount) * float64(server.config.RefundPercentAfterTimeout) / 100)
 	}
 
 	// Create the refund record with status pending

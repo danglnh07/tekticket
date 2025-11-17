@@ -89,13 +89,14 @@ func main() {
 		config,
 	)
 
-	if err := processor.Start(); err != nil {
+	mux := processor.PrepareHandler()
+	if err := processor.Start(mux); err != nil {
 		util.LOGGER.Error("failed to start asynq server", "error", err)
 		os.Exit(1)
 	}
 
 	// Start API server
-	server := api.NewServer(queries, distributor, mailService, uploadService, bot, config)
+	server := api.NewServer(queries, distributor, processor, mailService, uploadService, bot, config)
 	if err := server.Start(); err != nil {
 		util.LOGGER.Error("Failed to start server", "error", err)
 		os.Exit(1)

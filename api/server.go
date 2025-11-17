@@ -33,6 +33,7 @@ type Server struct {
 
 	// Dependencies
 	distributor   worker.TaskDistributor
+	processor     worker.TaskProcessor
 	mailService   notify.MailService
 	uploadService *uploader.Uploader
 	bot           *bot.Chatbot
@@ -43,6 +44,7 @@ type Server struct {
 func NewServer(
 	queries *db.Queries,
 	distributor worker.TaskDistributor,
+	processor worker.TaskProcessor,
 	mailService notify.MailService,
 	uploadService *uploader.Uploader,
 	bot *bot.Chatbot,
@@ -52,6 +54,7 @@ func NewServer(
 		router:        gin.Default(),
 		queries:       queries,
 		distributor:   distributor,
+		processor:     processor,
 		uploadService: uploadService,
 		mailService:   mailService,
 		bot:           bot,
@@ -160,6 +163,7 @@ func (server *Server) RegisterHandler() {
 			webhook.POST("/notifications", server.NotificationWebhook)
 			webhook.POST("/refund", server.RefundWebhook)
 			webhook.POST("/tickets/publish", server.PublishQRTickets)
+			webhook.POST("/settings", server.SettingWebhook)
 		}
 	}
 }
