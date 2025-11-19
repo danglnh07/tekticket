@@ -2285,6 +2285,9 @@ const docTemplate = `{
                 "payment_fee_percent": {
                     "type": "number"
                 },
+                "refund_percent_after_timeout": {
+                    "type": "number"
+                },
                 "reset_password_url": {
                     "description": "The frontend URL of the reset password page",
                     "type": "string"

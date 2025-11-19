@@ -35,6 +35,7 @@ type Server struct {
 	distributor   worker.TaskDistributor
 	processor     worker.TaskProcessor
 	mailService   notify.MailService
+	ablyService   *notify.AblyService
 	uploadService *uploader.Uploader
 	bot           *bot.Chatbot
 	config        *util.Config
@@ -46,6 +47,7 @@ func NewServer(
 	distributor worker.TaskDistributor,
 	processor worker.TaskProcessor,
 	mailService notify.MailService,
+	ablyService *notify.AblyService,
 	uploadService *uploader.Uploader,
 	bot *bot.Chatbot,
 	config *util.Config,
@@ -57,6 +59,7 @@ func NewServer(
 		processor:     processor,
 		uploadService: uploadService,
 		mailService:   mailService,
+		ablyService:   ablyService,
 		bot:           bot,
 		config:        config,
 	}

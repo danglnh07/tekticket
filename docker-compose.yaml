@@ -85,7 +85,7 @@ services:
       - 8.8.8.8
       - 8.8.4.4
   prometheus:
-    image: prom/prometheus
+    image: prom/prometheus:v3.7.3
     ports:
       - 9090:9090
     volumes:

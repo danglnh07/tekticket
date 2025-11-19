@@ -387,19 +387,69 @@ func (server *Server) SettingWebhook(ctx *gin.Context) {
 		return
 	}
 
+	// Since both Server and RedisTaskProcessor hold the same refernce to all services, update in Server will reflect
+	// changes in processor
+	errMsgs := []string{}
+
 	// Check if the chance made is the max worker, to scale the worker service
 	if req.MaxWorkers != 0 {
-		util.LOGGER.Info(
-			"POST /api/webhook/settings: detect max_workers changed, start scale up/down server",
-			"old", server.config.MaxWorkers,
-			"new", req.MaxWorkers,
-		)
+		util.LOGGER.Info("POST /api/webhook/settings: detect max_workers changed, start scale up/down server")
 
 		if err := server.processor.Scale(req.MaxWorkers, server.config.RedisAddr); err != nil {
 			util.LOGGER.Error("POST /api/webhook/settings: failed to start background server with new workers setup", "error", err)
-			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"failed to start new worker server, abort all changes"})
-			return
+			errMsgs = append(errMsgs, "failed to scale worker server: %s", err.Error())
 		}
+
+		util.LOGGER.Info("POST /api/webhook/settings: scale worker server success")
+	}
+
+	// Reauthenticate with Ably
+	if req.AblyApiKey != "" {
+		util.LOGGER.Info("POST /api/webhook/settings: detect new Ably API key, start reauthentication")
+
+		if err := server.ablyService.Reauthenticate(req.AblyApiKey); err != nil {
+			util.LOGGER.Error("POST /api/webhook/settings: failed to reauthenticate Ably service", "error", err)
+			errMsgs = append(errMsgs, "failed to reauthenticate Ably service")
+		}
+
+		util.LOGGER.Info("POST /api/webhook/settings: reauthenticate Ably success")
+	}
+
+	// Reauthenticate email service
+	if req.Email != "" || req.AppPassword != "" {
+		email, password := server.config.Email, server.config.AppPassword
+
+		if req.Email != "" {
+			email = req.Email
+		}
+
+		if req.AppPassword != "" {
+			password = req.AppPassword
+		}
+
+		util.LOGGER.Info("POST /api/webhook/settings: detect changes with email setting, start reauthentication")
+
+		server.mailService.Reauthenticate(email, password)
+
+		util.LOGGER.Info("POST /api/webhook/settings: reauthenticate email service success")
+	}
+
+	// Reauthenticate Telegram bot service
+	if req.TelegramBotToken != "" {
+		util.LOGGER.Info("POST /api/webhook/settings: detect changes with Telegram bot token, start reauthenticate")
+
+		server.bot.Reauthenticate(server.config.DockerTelegramDomain, req.TelegramBotToken)
+
+		util.LOGGER.Info("POST /api/webhook/settings: reauthenticate Telegram bot service success")
+	}
+
+	// Reauthenticate Stripe service
+	if req.StripeSecretKey != "" {
+		util.LOGGER.Info("POST /api/webhook/settings: detect Stripe secret key changes, start reauthentication")
+
+		payment.InitStripe(req.SecretKey)
+
+		util.LOGGER.Info("POST /api/webhook/settings: reauthenticate Stripe service success")
 	}
 
 	// Update the config with new system
