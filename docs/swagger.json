@@ -1477,6 +1477,46 @@
                     }
                 }
             }
+        },
+        "/api/webhook/settings": {
+            "post": {
+                "description": "Get user profile",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Webhook"
+                ],
+                "summary": "User profile",
+                "parameters": [
+                    {
+                        "description": "Settings",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/db.Setting"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Update configuration success",
+                        "schema": {
+                            "$ref": "#/definitions/api.SuccessMessage"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -2181,6 +2221,88 @@
                 },
                 "total_seats": {
                     "type": "integer"
+                }
+            }
+        },
+        "db.Setting": {
+            "type": "object",
+            "properties": {
+                "ably_api_key": {
+                    "description": "Ably API key",
+                    "type": "string"
+                },
+                "app_password": {
+                    "description": "Platform email's app password",
+                    "type": "string"
+                },
+                "checkin_url": {
+                    "description": "The frontend URL of the checkin page",
+                    "type": "string"
+                },
+                "email": {
+                    "description": "Platform email",
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "in_used": {
+                    "type": "boolean"
+                },
+                "max_full_refund_hours": {
+                    "type": "integer"
+                },
+                "max_reservation_hold_minutes": {
+                    "type": "integer"
+                },
+                "max_workers": {
+                    "description": "The total of background workers running in the background",
+                    "type": "integer"
+                },
+                "min_event_duration_minutes": {
+                    "type": "integer"
+                },
+                "min_event_lead_days": {
+                    "type": "integer"
+                },
+                "min_selling_duration_minutes": {
+                    "type": "integer"
+                },
+                "money_to_point_rate": {
+                    "type": "integer"
+                },
+                "payment_fee_percent": {
+                    "type": "number"
+                },
+                "reset_password_url": {
+                    "description": "The frontend URL of the reset password page",
+                    "type": "string"
+                },
+                "secret_key": {
+                    "description": "Platfrom secret key",
+                    "type": "string"
+                },
+                "server_domain": {
+                    "description": "Server domain, used for external API calling",
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "stripe_publishable_key": {
+                    "description": "Stripe publishable key",
+                    "type": "string"
+                },
+                "stripe_secret_key": {
+                    "description": "Stripe secret key",
+                    "type": "string"
+                },
+                "telegram_bot_token": {
+                    "description": "Telegram bot token",
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
                 }
             }
         },

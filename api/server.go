@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/hibiken/asynq"
 	"github.com/hibiken/asynqmon"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -32,6 +33,7 @@ type Server struct {
 
 	// Dependencies
 	distributor   worker.TaskDistributor
+	processor     worker.TaskProcessor
 	mailService   notify.MailService
 	uploadService *uploader.Uploader
 	bot           *bot.Chatbot
@@ -42,6 +44,7 @@ type Server struct {
 func NewServer(
 	queries *db.Queries,
 	distributor worker.TaskDistributor,
+	processor worker.TaskProcessor,
 	mailService notify.MailService,
 	uploadService *uploader.Uploader,
 	bot *bot.Chatbot,
@@ -51,6 +54,7 @@ func NewServer(
 		router:        gin.Default(),
 		queries:       queries,
 		distributor:   distributor,
+		processor:     processor,
 		uploadService: uploadService,
 		mailService:   mailService,
 		bot:           bot,
@@ -60,22 +64,35 @@ func NewServer(
 
 // Helper method to register handler for API
 func (server *Server) RegisterHandler() {
-	server.router.Use(server.CORSMiddleware())
-
-	// Setup asynqmon
-	h := asynqmon.New(asynqmon.Options{
+	// asynqmon set up
+	asynqmonHandler := asynqmon.New(asynqmon.Options{
 		RootPath:     "/monitoring",
 		RedisConnOpt: asynq.RedisClientOpt{Addr: server.config.RedisAddr},
 	})
-	server.router.Any("/monitoring/*a", gin.WrapH(h))
+
+	// Register global middleware
+	server.router.Use(server.CORSMiddleware(), server.PrometheusMiddleware())
+
+	// Register Prometheus metrics endpoint
+	server.router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+	// Register asynqmon monitoring endpoint
+	server.router.Any("/monitoring/*a", gin.WrapH(asynqmonHandler))
+
+	// Ping route
+	server.router.GET("/ping", func(ctx *gin.Context) {
+		ctx.String(http.StatusOK, "pong")
+	})
+
+	// Swagger docs
+	server.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	// Static image handler
+	server.router.GET("/images/:id", server.GetImage)
 
 	// API routes
 	api := server.router.Group("/api")
 	{
-		api.GET("/", func(ctx *gin.Context) {
-			ctx.JSON(http.StatusOK, gin.H{"message": "Hello world"})
-		})
-
 		// Auth routes
 		auth := api.Group("/auth")
 		{
@@ -146,14 +163,9 @@ func (server *Server) RegisterHandler() {
 			webhook.POST("/notifications", server.NotificationWebhook)
 			webhook.POST("/refund", server.RefundWebhook)
 			webhook.POST("/tickets/publish", server.PublishQRTickets)
+			webhook.POST("/settings", server.SettingWebhook)
 		}
 	}
-
-	// Swagger docs
-	server.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-
-	// Static image handler
-	server.router.GET("/images/:id", server.GetImage)
 }
 
 // Start server

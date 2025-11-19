@@ -163,7 +163,7 @@ func ExtractRoleFromToken(token, directusAddr, staticAccessToken string) (string
 		roleID string
 		ok     bool
 	)
-	if roleID, ok = tokenPayload["id"].(string); !ok {
+	if roleID, ok = tokenPayload["role"].(string); !ok {
 		return "", fmt.Errorf("failed to parse role ID from access token")
 	}
 

@@ -4,3 +4,6 @@
 
 # Ignore the test coverage output 
 coverage.out
+
+# Ignore internal docs 
+docs/internal/*

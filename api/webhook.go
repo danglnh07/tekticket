@@ -367,3 +367,42 @@ func (server *Server) RefundWebhook(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, SuccessMessage{"Refund success"})
 }
+
+// Webhook godoc
+// @Summary      User profile
+// @Description  Get user profile
+// @Tags         Webhook
+// @Accept       json
+// @Produce      json
+// @Param        request  body  db.Setting true  "Settings"
+// @Success      200  {object}  SuccessMessage      "Update configuration success"
+// @Failure      400  {object}  ErrorResponse        "Invalid request body"
+// @Router       /api/webhook/settings [post]
+func (server *Server) SettingWebhook(ctx *gin.Context) {
+	// Get request body and validate
+	var req db.Setting
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		util.LOGGER.Warn("POST /api/webhook/settings: failed to bind request body", "error", err)
+		ctx.JSON(http.StatusBadRequest, ErrorResponse{"Invalid request body"})
+		return
+	}
+
+	// Check if the chance made is the max worker, to scale the worker service
+	if req.MaxWorkers != 0 {
+		util.LOGGER.Info(
+			"POST /api/webhook/settings: detect max_workers changed, start scale up/down server",
+			"old", server.config.MaxWorkers,
+			"new", req.MaxWorkers,
+		)
+
+		if err := server.processor.Scale(req.MaxWorkers, server.config.RedisAddr); err != nil {
+			util.LOGGER.Error("POST /api/webhook/settings: failed to start background server with new workers setup", "error", err)
+			ctx.JSON(http.StatusInternalServerError, ErrorResponse{"failed to start new worker server, abort all changes"})
+			return
+		}
+	}
+
+	// Update the config with new system
+	server.config.Setting = req
+	ctx.JSON(http.StatusOK, SuccessMessage{"Update configuration success"})
+}

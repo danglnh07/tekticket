@@ -197,6 +197,7 @@ type Setting struct {
 	MinSellingDurationMinutes int          `json:"min_selling_duration_minutes"`
 	PaymentFeePercent         DecimalFloat `json:"payment_fee_percent"`
 	MaxFullRefundHours        int          `json:"max_full_refund_hours"`
+	RefundPercentAfterTimeout DecimalFloat `json:"refund_percent_after_timeout"`
 	Email                     string       `json:"email"`                  // Platform email
 	AppPassword               string       `json:"app_password"`           // Platform email's app password
 	SecretKey                 string       `json:"secret_key"`             // Platfrom secret key

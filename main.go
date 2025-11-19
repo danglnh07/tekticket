@@ -21,6 +21,8 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
+
 	// Load config
 	config := util.NewConfig()
 	if err := config.LoadStaticConfig(".env"); err != nil {
@@ -32,78 +34,71 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Connect to database and Redis
-	queries := db.NewQueries()
-
 	// Connect Redis
-	ctx := context.Background()
+	queries := db.NewQueries()
 	if err := queries.ConnectRedis(ctx, &redis.Options{Addr: config.RedisAddr}); err != nil {
 		util.LOGGER.Error("Error connecting to Redis", "error", err)
 		os.Exit(1)
 	}
 
-	// Create dependencies for server
-	distributor := worker.NewRedisTaskDistributor(asynq.RedisClientOpt{Addr: config.RedisAddr})
+	// Background task distributor
+	redisClientOpts := asynq.RedisClientOpt{
+		Addr: config.RedisAddr,
+	}
+	distributor := worker.NewRedisTaskDistributor(redisClientOpts)
+
+	// Upload service
 	uploadService := uploader.NewUploader(config.DirectusAddr, config.DirectusStaticToken)
+
+	// Mail service
 	mailService := notify.NewEmailService(config.Email, config.AppPassword)
-	bot, err := bot.NewChatbot(
-		fmt.Sprintf("%s/bot%s", config.DockerTelegramDomain, config.TelegramBotToken),
-		fmt.Sprintf("%s/api/webhook/telegram", config.DockerServerDomain),
-	)
+
+	// Telegram bot service
+	telegramServer := fmt.Sprintf("%s/bot%s", config.DockerTelegramDomain, config.TelegramBotToken)
+	telegramWebhook := fmt.Sprintf("%s/api/webhook/telegram", config.DockerServerDomain)
+
+	bot, err := bot.NewChatbot(telegramServer, telegramWebhook)
 	if err != nil {
 		util.LOGGER.Error("Failed to initialize Telegram chat bot", "error", err)
 		os.Exit(1)
 	}
+
 	if err := bot.Setup(); err != nil {
 		util.LOGGER.Error("Failed to setup chatbot", "error", err)
 		os.Exit(1)
 	}
+
+	// Ably service
 	ablyService, err := notify.NewAblyService(config.AblyApiKey)
 	if err != nil {
 		util.LOGGER.Error("Failed to initialize Ably service", "error", err)
 		os.Exit(1)
 	}
+
+	// Init Stripe service
 	payment.InitStripe(config.StripeSecretKey)
 
-	// Start the background server in separate goroutine (since it's will block the main thread)
-	util.LOGGER.Info("Max workers", "val", config.MaxWorkers)
-	for range config.MaxWorkers { // This should be configure, but let's just use a constant for now
-		go func() {
-			if err := StartBackgroundProcessor(
-				asynq.RedisClientOpt{Addr: config.RedisAddr},
-				queries,
-				mailService,
-				uploadService,
-				ablyService,
-				bot,
-				config,
-			); err != nil {
-				util.LOGGER.Error("task failed", "error", err)
-			}
-		}()
+	// Background task processor
+	processor := worker.NewRedisTaskProcessor(
+		asynq.RedisClientOpt{Addr: config.RedisAddr},
+		queries,
+		mailService,
+		uploadService,
+		ablyService,
+		bot,
+		config,
+	)
 
+	mux := processor.PrepareHandler()
+	if err := processor.Start(mux); err != nil {
+		util.LOGGER.Error("failed to start asynq server", "error", err)
+		os.Exit(1)
 	}
 
-	// Start server
-	server := api.NewServer(queries, distributor, mailService, uploadService, bot, config)
+	// Start API server
+	server := api.NewServer(queries, distributor, processor, mailService, uploadService, bot, config)
 	if err := server.Start(); err != nil {
 		util.LOGGER.Error("Failed to start server", "error", err)
 		os.Exit(1)
 	}
-}
-
-func StartBackgroundProcessor(
-	redisOpts asynq.RedisClientOpt,
-	queries *db.Queries,
-	mailService notify.MailService,
-	uploadService *uploader.Uploader,
-	ablyService *notify.AblyService,
-	bot *bot.Chatbot,
-	config *util.Config,
-) error {
-	// Create the processor
-	processor := worker.NewRedisTaskProcessor(redisOpts, queries, mailService, uploadService, ablyService, bot, config)
-
-	// Start process tasks
-	return processor.Start()
 }
