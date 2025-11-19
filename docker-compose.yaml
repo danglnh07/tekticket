@@ -99,6 +99,20 @@ services:
       - grafana_storage:/var/lib/grafana
     environment:
       - GF_LOG_LEVEL=error
+  loki:
+    image: grafana/loki:3.5.8
+    ports:
+      - 3100:3100
+    volumes:
+      - ./loki-config.yml:/etc/loki/loki-config.yaml
+  promtail:
+    image: grafana/promtail:3.5.8
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/config.yml
+      - /var/log:/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+
 volumes:
   grafana_storage: {}
   prometheus_storage: {}
