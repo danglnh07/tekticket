@@ -71,6 +71,7 @@ type Event struct {
 	Slug           string          `json:"slug,omitempty"`
 	PreviewImage   string          `json:"preview_image,omitempty"`
 	Status         string          `json:"status,omitempty"`
+	Place          *Coordinate     `json:"place,omitempty"`
 	Creator        *User           `json:"creator_id,omitempty"`
 	Category       *Category       `json:"category_id,omitempty"`
 	EventSchedules []EventSchedule `json:"event_schedules,omitempty"`
@@ -178,10 +179,30 @@ type Refund struct {
 // checkins
 type Checkin struct {
 	ID            string       `json:"id,omitempty"`
-	CheckinDate   string       `json:"date_created,omitempty"`
+	CheckinDate   *DateTime    `json:"date_created,omitempty"`
 	Staff         *User        `json:"staff_id,omitempty"`
 	BookingItem   *BookingItem `json:"booking_item_id,omitempty"`
 	CheckinDevice string       `json:"checkin_device,omitempty"`
+}
+
+// notification_templates
+type NotificationTemplate struct {
+	ID          string `json:"id,omitempty"`
+	SubjectTmpl string `json:"subject_tmpl,omitempty"`
+	BodyTmpl    string `json:"body_tmpl,omitempty"`
+}
+
+// notifications
+type Notification struct {
+	ID      string `json:"id,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// notification_recipents
+type NotificationRecipent struct {
+	ID           string        `json:"id,omitempty"`
+	DateCreated  *DateTime     `json:"date_created,omitempty"`
+	Notification *Notification `json:"notification_id,omitempty"`
 }
 
 // settings

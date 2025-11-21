@@ -15,6 +15,10 @@ var (
 	maxAmount int64 = 99_999_999
 )
 
+func RandomAmount() int64 {
+	return minAmount + rand.Int63n(maxAmount-minAmount+1)
+}
+
 // Main entry point of payment test package
 func TestMain(m *testing.M) {
 	if os.Getenv("CI") != "" {
@@ -76,8 +80,7 @@ func TestCreatePaymentIntent(t *testing.T) {
 // Test cancel unpaid payment intent
 func TestCancelPaymentIntent(t *testing.T) {
 	// Pick a random value in the valid range
-	amount := minAmount + rand.Int63n(maxAmount-minAmount+1)
-	intent := CreatePayment(t, amount)
+	intent := CreatePayment(t, RandomAmount())
 
 	// Cancel intent
 	require.NoError(t, CancelPaymentIntent(intent.ID))
@@ -86,8 +89,7 @@ func TestCancelPaymentIntent(t *testing.T) {
 // Test confirm payment
 func TestConfirmPayment(t *testing.T) {
 	// Pick a random value in the valid range
-	amount := minAmount + rand.Int63n(maxAmount-minAmount+1)
-	intent := CreatePayment(t, amount)
+	intent := CreatePayment(t, RandomAmount())
 	method := CreatePaymentMethod(t)
 	ConfirmPayment(t, intent, method)
 }
@@ -95,7 +97,7 @@ func TestConfirmPayment(t *testing.T) {
 // Test get payment intent
 func TestGetPaymentIntent(t *testing.T) {
 	// Create a payment intent
-	amount := minAmount + rand.Int63n(maxAmount-minAmount+1)
+	amount := RandomAmount()
 	intent := CreatePayment(t, amount)
 
 	// Get payment intent
@@ -103,12 +105,13 @@ func TestGetPaymentIntent(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, getIntent)
 	require.Equal(t, intent.ID, getIntent.ID)
+	require.Equal(t, amount, intent.Amount)
 	require.Equal(t, stripe.PaymentIntentStatusRequiresPaymentMethod, getIntent.Status)
 }
 
 // Test partial refund
 func TestPartialRefund(t *testing.T) {
-	amount := minAmount + rand.Int63n(maxAmount-minAmount+1)
+	amount := RandomAmount()
 	intent := CreatePayment(t, amount)
 	method := CreatePaymentMethod(t)
 	ConfirmPayment(t, intent, method)
@@ -124,7 +127,7 @@ func TestPartialRefund(t *testing.T) {
 
 // Test full refund
 func TestFullRefund(t *testing.T) {
-	amount := minAmount + rand.Int63n(maxAmount-minAmount+1)
+	amount := RandomAmount()
 	intent := CreatePayment(t, amount)
 	method := CreatePaymentMethod(t)
 	ConfirmPayment(t, intent, method)
@@ -136,4 +139,36 @@ func TestFullRefund(t *testing.T) {
 	require.Equal(t, intent.ID, refund.PaymentIntent.ID)
 	require.Equal(t, amount, refund.Amount)
 	util.LOGGER.Info("Full refund", "status", refund.Status)
+}
+
+// Test handle payment error
+func TestHandlePaymentError(t *testing.T) {
+	// Create test data
+	amount := RandomAmount()
+
+	// Create payment intent
+	intent := CreatePayment(t, amount)
+
+	// Create a failed payment method: https://docs.stripe.com/testing?testing-method=tokens#declined-payments
+	method, err := CreatePaymentMethodFromToken("tok_visa_chargeDeclined")
+	require.NoError(t, err)
+
+	// Confirm payment with invalid payment method
+	_, err = ConfirmPaymentIntent(intent.ID, method.ID)
+
+	// Should have an error
+	require.Error(t, err)
+
+	// Error should be of type stripe.Error
+	var stripeErr *stripe.Error
+	require.ErrorAs(t, err, &stripeErr)
+
+	// Error code must be: card_declined
+	require.Equal(t, stripe.ErrorCodeCardDeclined, err.(*stripe.Error).Code)
+
+	// Decline code must be: generic_declined
+	require.Equal(t, stripe.DeclineCodeGenericDecline, err.(*stripe.Error).DeclineCode) // Must be generic decline code
+
+	// Try printing message
+	util.LOGGER.Info("Error message", "method", "tok_visa_chargeDeclined", "msg", err.(*stripe.Error).Msg)
 }

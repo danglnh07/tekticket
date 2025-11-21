@@ -35,6 +35,7 @@ type Server struct {
 	distributor   worker.TaskDistributor
 	processor     worker.TaskProcessor
 	mailService   notify.MailService
+	ablyService   *notify.AblyService
 	uploadService *uploader.Uploader
 	bot           *bot.Chatbot
 	config        *util.Config
@@ -46,6 +47,7 @@ func NewServer(
 	distributor worker.TaskDistributor,
 	processor worker.TaskProcessor,
 	mailService notify.MailService,
+	ablyService *notify.AblyService,
 	uploadService *uploader.Uploader,
 	bot *bot.Chatbot,
 	config *util.Config,
@@ -57,6 +59,7 @@ func NewServer(
 		processor:     processor,
 		uploadService: uploadService,
 		mailService:   mailService,
+		ablyService:   ablyService,
 		bot:           bot,
 		config:        config,
 	}
@@ -149,6 +152,12 @@ func (server *Server) RegisterHandler() {
 			events.GET("/:id", server.GetEvent)
 		}
 
+		// Seat route
+		seat := api.Group("/seats")
+		{
+			seat.GET("", server.ListSeats)
+		}
+
 		// Memberships routes
 		memberships := api.Group("/memberships", server.AuthMiddleware())
 		{
@@ -164,6 +173,12 @@ func (server *Server) RegisterHandler() {
 			webhook.POST("/refund", server.RefundWebhook)
 			webhook.POST("/tickets/publish", server.PublishQRTickets)
 			webhook.POST("/settings", server.SettingWebhook)
+		}
+
+		// Notification route
+		notification := api.Group("/notifications")
+		{
+			notification.GET("/me", server.ListNotification)
 		}
 	}
 }

@@ -21,6 +21,17 @@ func NewAblyService(apiKey string) (*AblyService, error) {
 	return &AblyService{client: client}, nil
 }
 
+// Reauthenticate: update Ably to use a new API
+func (service *AblyService) Reauthenticate(apiKey string) error {
+	newClient, err := ably.NewREST(ably.WithKey(apiKey))
+	if err != nil {
+		return err
+	}
+
+	service.client = newClient
+	return nil
+}
+
 // Publish message to a channel.
 // channelName is the name of the channel to send the message to. It must be correct, or else the other side couldn't get it
 // eventName is the name of the event that fire this notification.

@@ -96,7 +96,7 @@ func main() {
 	}
 
 	// Start API server
-	server := api.NewServer(queries, distributor, processor, mailService, uploadService, bot, config)
+	server := api.NewServer(queries, distributor, processor, mailService, ablyService, uploadService, bot, config)
 	if err := server.Start(); err != nil {
 		util.LOGGER.Error("Failed to start server", "error", err)
 		os.Exit(1)

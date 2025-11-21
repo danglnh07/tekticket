@@ -42,6 +42,11 @@ func NewChatbot(server, webhook string) (*Chatbot, error) {
 	return bot, nil
 }
 
+// Reauthenticate: update bot token
+func (bot *Chatbot) Reauthenticate(telegramDomain, botToken string) {
+	bot.server = fmt.Sprintf("%s/bot%s", telegramDomain, botToken)
+}
+
 // Utility method: GET request
 func (bot *Chatbot) Get(path string, result any) error {
 	// Make request to Telegram API

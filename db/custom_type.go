@@ -75,3 +75,9 @@ func (dt *DateTime) MarshalJSON() ([]byte, error) {
 	datetimeStr := t.UTC().Format(time.RFC3339)
 	return json.Marshal(datetimeStr)
 }
+
+// Implement custom type: Coordinate
+type Coordinate struct {
+	Coordinates []float64 `json:"coordinates"`
+	Type        string    `json:"type"`
+}

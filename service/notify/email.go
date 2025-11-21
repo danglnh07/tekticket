@@ -8,6 +8,7 @@ import (
 
 // Universal interface for mail service
 type MailService interface {
+	Reauthenticate(email, password string)
 	SendEmail(to, subject, body string) error
 }
 
@@ -30,6 +31,12 @@ func NewEmailService(email, password string) *EmailService {
 		Email: email,
 		Auth:  smtpAuth,
 	}
+}
+
+// Reauthenticate: update SMTP auth
+func (service *EmailService) Reauthenticate(email, password string) {
+	smtpAuth := smtp.PlainAuth("", email, password, "smtp.gmail.com")
+	service.Auth = smtpAuth
 }
 
 // Method to send email

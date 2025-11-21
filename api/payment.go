@@ -195,17 +195,23 @@ func (server *Server) CreatePayment(ctx *gin.Context) {
 }
 
 // CreatePaymentMethod godoc
-// @Summary      Create payment method
-// @Description  Create payment method for confirm payment. This API is solely for internal testing, not to be consumed by any client
+// @Summary      Create payment method from token
+// @Description  Create Stripe payment method . This API is solely for internal testing, not to be consumed by any client
+// @Description  Link docs: https://docs.stripe.com/testing#declined-payments
 // @Tags         Payments
 // @Accept       json
 // @Produce      json
+// @Param token query string true "Stripe test token"
 // @Success      200  {object}  SuccessMessage   "Payment method ID of mock visa"
 // @Failure      500  {object}  ErrorResponse    "Internal server error"
 // @Security     BearerAuth
 // @Router       /api/payments/method [get]
 func (server *Server) CreatePaymentMethod(ctx *gin.Context) {
-	pm, err := payment.CreatePaymentMethodFromToken("tok_visa")
+	// Get payment method token from request parameter
+	stripeToken := ctx.Query("token")
+
+	// Create payment method
+	pm, err := payment.CreatePaymentMethodFromToken(stripeToken)
 	if err != nil {
 		util.LOGGER.Error("GET /api/payments/method: failed to create mock token payment method", "error", err)
 		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
@@ -216,37 +222,27 @@ func (server *Server) CreatePaymentMethod(ctx *gin.Context) {
 }
 
 // Helper method: extract reason for payment confirmation or refund failed
-func (server *Server) extractFailedPaymentReason(intent *stripe.PaymentIntent) (int, string) {
-	// If payment failed but last payment error is nil (which somehow contradict, we call it some unexpected error)
-	if intent.LastPaymentError == nil {
+func (server *Server) extractFailedPaymentReason(err error) (int, string) {
+	// Try parsing the error into stripe.Error
+	var (
+		stripeError *stripe.Error
+		ok          bool
+	)
+
+	if stripeError, ok = err.(*stripe.Error); !ok {
+		// If error occur, but not stripe.Error, then this is unexpected error
 		return http.StatusInternalServerError, "unexpected error"
 	}
 
 	var (
-		reason = ""
-		status = intent.LastPaymentError.HTTPStatusCode
+		reason = fmt.Sprintf("%s (%s): %s", stripeError.Code, stripeError.DeclineCode, stripeError.Msg)
+		status = stripeError.HTTPStatusCode
 	)
 
-	// In Stripe viewpoint, it can be internal server error, but from our view point, it's not, so using failed dependency here
-	// make more sense
+	// In Stripe viewpoint, this is their internal server error, but from our view point, it's not,
+	// so using failed dependency here make more sense
 	if status == http.StatusInternalServerError {
 		status = http.StatusFailedDependency
-	}
-
-	// Using some common error, craft a user-friendly reason
-	switch intent.LastPaymentError.Code {
-	case stripe.ErrorCodeCardDeclined:
-		reason = "Card declined. Please try a different payment method"
-	case stripe.ErrorCodeInsufficientFunds:
-		reason = "Insufficient funds. Please use a different card"
-	case stripe.ErrorCodeExpiredCard:
-		reason = "Card expired. Please use a different card"
-	case stripe.ErrorCodeIncorrectCVC:
-		reason = "Incorrect CVC. Please check your card details"
-	case stripe.ErrorCodeProcessingError:
-		reason = "Payment processing error. Please try again"
-	default:
-		reason = fmt.Sprintf("Payment failed: %s", intent.LastPaymentError.Msg)
 	}
 
 	return status, reason
@@ -352,6 +348,9 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 	if err != nil {
 		util.LOGGER.Error("POST /api/payments/:id/confirm: failed to confirm payment intent", "error", err)
 
+		// Extract payment error
+		status, msg := server.extractFailedPaymentReason(err)
+
 		// Rollback: update payment status from 'processing' to 'pending'
 		payload := worker.UpdatePaymentRecordPayload{
 			URL:     fmt.Sprintf("%s/items/payments/%s", server.config.DirectusAddr, paymentID),
@@ -377,43 +376,7 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 			)
 		}
 
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
-		return
-	}
-
-	// Check if confirmation actually success. A failure can still occur, even if no error is return
-	if confirmIntent.Status != stripe.PaymentIntentStatusSucceeded {
-		util.LOGGER.Warn("POST /api/payments/:id/confirm: payment confirmation failed", "status", confirmIntent.Status)
-
-		// Try getting the reason why payment confirmation failed
-		status, reason := server.extractFailedPaymentReason(confirmIntent)
-
-		// Rollback: update payment status from 'processing' to 'pending'
-		payload := worker.UpdatePaymentRecordPayload{
-			URL:     fmt.Sprintf("%s/items/payments/%s", server.config.DirectusAddr, paymentID),
-			Body:    map[string]any{"status": "pending"},
-			Token:   token,
-			Caller:  "POST /api/payments/:id/confirm",
-			Context: "rollback after payment confirmation failure",
-		}
-
-		err = server.distributor.DistributeTask(
-			ctx,
-			worker.UpdatePaymentRecord,
-			payload,
-			asynq.Queue(worker.HIGH_IMPACT),
-			asynq.MaxRetry(5),
-		)
-
-		if err != nil {
-			util.LOGGER.Error(
-				"POST /api/payments/:id/confirm: failed to distribute background task",
-				"task_issued_reason", "rollback payment status after payment confirmation failure",
-				"error", err,
-			)
-		}
-
-		ctx.JSON(status, ErrorResponse{reason})
+		ctx.JSON(status, ErrorResponse{msg})
 		return
 	}
 
@@ -522,6 +485,9 @@ func (server *Server) Refund(ctx *gin.Context) {
 	if err != nil {
 		util.LOGGER.Error("POST /api/payments/:id/refund: failed to request refund in Stripe", "error", err)
 
+		// Extract failed refund reason
+		status, msg := server.extractFailedPaymentReason(err)
+
 		// Rollback, update refund status back to failed
 		payload := worker.UpdatePaymentRecordPayload{
 			URL:     fmt.Sprintf("%s/items/refunds/%s", server.config.DirectusAddr, refundRecord.ID),
@@ -547,7 +513,7 @@ func (server *Server) Refund(ctx *gin.Context) {
 			)
 		}
 
-		ctx.JSON(http.StatusInternalServerError, ErrorResponse{"Internal server error"})
+		ctx.JSON(status, ErrorResponse{msg})
 		return
 	}
 
