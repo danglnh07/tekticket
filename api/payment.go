@@ -485,6 +485,9 @@ func (server *Server) Refund(ctx *gin.Context) {
 	if err != nil {
 		util.LOGGER.Error("POST /api/payments/:id/refund: failed to request refund in Stripe", "error", err)
 
+		// Extract failed refund reason
+		status, msg := server.extractFailedPaymentReason(err)
+
 		// Rollback, update refund status back to failed
 		payload := worker.UpdatePaymentRecordPayload{
 			URL:     fmt.Sprintf("%s/items/refunds/%s", server.config.DirectusAddr, refundRecord.ID),
@@ -510,7 +513,6 @@ func (server *Server) Refund(ctx *gin.Context) {
 			)
 		}
 
-		status, msg := server.extractFailedPaymentReason(err)
 		ctx.JSON(status, ErrorResponse{msg})
 		return
 	}
