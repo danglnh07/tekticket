@@ -1565,7 +1565,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/api.EventInfo"
+                                "$ref": "#/definitions/db.SeatZone"
                             }
                         }
                     },
@@ -1860,10 +1860,6 @@ const docTemplate = `{
                 "address": {
                     "type": "string"
                 },
-                "base_price": {
-                    "description": "Minimum ticket price",
-                    "type": "integer"
-                },
                 "category": {
                     "$ref": "#/definitions/db.Category"
                 },
@@ -1873,17 +1869,27 @@ const docTemplate = `{
                 "country": {
                     "type": "string"
                 },
+                "earliest_start_time": {
+                    "description": "Closest upcoming schedule time",
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
+                },
+                "latitude": {
+                    "type": "number"
+                },
+                "longitude": {
+                    "type": "number"
+                },
+                "min_base_price": {
+                    "description": "Minimum ticket price",
+                    "type": "integer"
                 },
                 "name": {
                     "type": "string"
                 },
                 "preview_image": {
-                    "type": "string"
-                },
-                "start_time": {
-                    "description": "Closest upcoming schedule time",
                     "type": "string"
                 }
             }

@@ -151,6 +151,12 @@ func (server *Server) filterPrice(minPrice, maxPrice int, tickets []db.Ticket) b
 // Helper method: check if this event has any schedule that contained filter_date.
 // We only support filter by date, not time
 func (server *Server) filterDate(filter time.Time, schedules []db.EventSchedule) bool {
+	// If no filter provided, return true for all item
+	if filter.IsZero() {
+		return true
+	}
+
+	// Truncate time from date time
 	filter = filter.Truncate(24 * time.Hour)
 
 	// Loop though schedule, and check if the filter is in range of start and end time
@@ -174,8 +180,10 @@ type EventInfo struct {
 	Country      string      `json:"country"`
 	PreviewImage string      `json:"preview_image"`
 	Category     db.Category `json:"category"`
-	StartTime    string      `json:"start_time"` // Closest upcoming schedule time
-	BasePrice    int         `json:"base_price"` // Minimum ticket price
+	Longitude    float64     `json:"longitude"`
+	Latitude     float64     `json:"latitude"`
+	StartTime    string      `json:"earliest_start_time"` // Closest upcoming schedule time
+	BasePrice    int         `json:"min_base_price"`      // Minimum ticket price
 }
 
 // ListEvents godoc
@@ -298,6 +306,8 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 			Country:      event.Country,
 			PreviewImage: event.PreviewImage,
 			Category:     *event.Category,
+			Longitude:    event.Place.Coordinates[0],
+			Latitude:     event.Place.Coordinates[1],
 		}
 
 		// Filter price and date
@@ -305,7 +315,7 @@ func (server *Server) ListEvents(ctx *gin.Context) {
 			continue
 		}
 
-		if filteredDate.IsZero() || !server.filterDate(filteredDate, event.EventSchedules) {
+		if !server.filterDate(filteredDate, event.EventSchedules) {
 			continue
 		}
 
@@ -373,7 +383,7 @@ func (server *Server) ListCategories(ctx *gin.Context) {
 // @Produce      json
 // @Param        ticket_id query  string true   "ticket_id"
 // @Param        event_schedule_id query string true "event_schedule_id"
-// @Success      200  {array}   EventInfo         "List of seats retrieved successfully"
+// @Success      200  {array}   db.SeatZone         "List of seats retrieved successfully"
 // @Success      400  {object}  ErrorResponse     "failed to bind request body"
 // @Failure      401  {object}  ErrorResponse     "Unauthorized access | Token expired"
 // @Failure      403  {object}  ErrorResponse     "Invalid token"
