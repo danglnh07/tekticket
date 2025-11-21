@@ -176,7 +176,7 @@ type NotificationRequest struct {
 // NotificationWebhook godoc
 // @Summary      Handle Directus notification webhook
 // @Description  Receives webhook payloads from Directus flows and dispatches notifications to various destinations (in-app, Telegram, email) using background workers.
-// @Tags         Notifications
+// @Tags         Webhook
 // @Accept       json
 // @Produce      json
 // @Param        request  body  NotificationRequest  true  "Notification webhook payload"

@@ -838,6 +838,24 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
+                        "description": "Minimum price for filter",
+                        "name": "min_price",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum price for filter",
+                        "name": "max_price",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "date (YYYY-MM-DD) for date filtering",
+                        "name": "filtered_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
                         "description": "Limit number of results (default: 50)",
                         "name": "limit",
                         "in": "query"
@@ -1066,6 +1084,61 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/notifications/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a list of notifications",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notification"
+                ],
+                "summary": "List all notifications",
+                "responses": {
+                    "200": {
+                        "description": "List of events retrieved successfully",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/db.NotificationRecipent"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized access | Token expired",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/payments": {
             "post": {
                 "security": [
@@ -1148,7 +1221,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create payment method for confirm payment. This API is solely for internal testing, not to be consumed by any client",
+                "description": "Create Stripe payment method . This API is solely for internal testing, not to be consumed by any client\nLink docs: https://docs.stripe.com/testing#declined-payments",
                 "consumes": [
                     "application/json"
                 ],
@@ -1158,7 +1231,16 @@ const docTemplate = `{
                 "tags": [
                     "Payments"
                 ],
-                "summary": "Create payment method",
+                "summary": "Create payment method from token",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Stripe test token",
+                        "name": "token",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Payment method ID of mock visa",
@@ -1443,6 +1525,83 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/seats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a list of seats that belong to a seat zone tie with ticket and event schedule",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Seats"
+                ],
+                "summary": "List all seats along with their status for booking information",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ticket_id",
+                        "name": "ticket_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "event_schedule_id",
+                        "name": "event_schedule_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of seats retrieved successfully",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/api.EventInfo"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "failed to bind request body",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized access | Token expired",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Invalid token",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "You hit the rate limit",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/webhook/notifications": {
             "post": {
                 "description": "Receives webhook payloads from Directus flows and dispatches notifications to various destinations (in-app, Telegram, email) using background workers.",
@@ -1453,7 +1612,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Notifications"
+                    "Webhook"
                 ],
                 "summary": "Handle Directus notification webhook",
                 "parameters": [
@@ -2009,6 +2168,20 @@ const docTemplate = `{
                 }
             }
         },
+        "db.Coordinate": {
+            "type": "object",
+            "properties": {
+                "coordinates": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
         "db.Event": {
             "type": "object",
             "properties": {
@@ -2047,6 +2220,9 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "place": {
+                    "$ref": "#/definitions/db.Coordinate"
                 },
                 "preview_image": {
                     "type": "string"
@@ -2111,6 +2287,31 @@ const docTemplate = `{
                 },
                 "tier": {
                     "type": "string"
+                }
+            }
+        },
+        "db.Notification": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "db.NotificationRecipent": {
+            "type": "object",
+            "properties": {
+                "date_created": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "notification_id": {
+                    "$ref": "#/definitions/db.Notification"
                 }
             }
         },
