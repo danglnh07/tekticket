@@ -68,6 +68,9 @@ func (server *Server) PrometheusMiddleware() gin.HandlerFunc {
 		[]string{"method", "path"},
 	)
 
+	// Register metrics
+	prometheus.MustRegister(requestCount, requestDuration, requestSize)
+
 	return func(ctx *gin.Context) {
 		// Record the start of the request
 		start := time.Now()
@@ -83,6 +86,6 @@ func (server *Server) PrometheusMiddleware() gin.HandlerFunc {
 		// Provide prometheus with metadatas
 		requestCount.WithLabelValues(method, path, status).Inc()
 		requestDuration.WithLabelValues(method, path, status).Observe(time.Since(start).Seconds())
-		requestSize.WithLabelValues(method, path).Observe(time.Since(start).Seconds())
+		requestSize.WithLabelValues(method, path).Observe(float64(ctx.Request.ContentLength))
 	}
 }

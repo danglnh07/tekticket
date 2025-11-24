@@ -8,7 +8,10 @@ scrape_configs:
     # metrics_path defaults to '/metrics'
     # scheme defaults to 'http'.
     static_configs:
-      - targets: [ "localhost:9090" ]
+      - targets: [ "prometheus:9090" ]
   - job_name: tekticket-server
     static_configs:
-      - targets: [ "localhost:8080" ]
+      - targets: [ "app:8080" ]
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets: [ 'node-exporter:9100' ]

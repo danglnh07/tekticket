@@ -99,6 +99,14 @@ services:
       - grafana_storage:/var/lib/grafana
     environment:
       - GF_LOG_LEVEL=error
+  node-exporter:
+    image: prom/node-exporter:v1.10.2
+    ports:
+      - 9100:9100
+    volumes:
+      - /proc/:/host/proc:ro # Mount /proc/ directory 
+      - /sys/:/host/sys:ro # Mount /sys/ directory
+      - /:/rootfs:ro # Mount root directory
   loki:
     image: grafana/loki:3.5.8
     ports:
