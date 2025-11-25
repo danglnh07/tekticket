@@ -90,6 +90,16 @@ func GetPaymentIntent(piID string) (*stripe.PaymentIntent, error) {
 	return intent, nil
 }
 
+// Get payment method type
+func GetPaymentMethod(pmID string) (*stripe.PaymentMethod, error) {
+	method, err := paymentmethod.Get(pmID, &stripe.PaymentMethodParams{})
+	if err != nil {
+		return nil, err
+	}
+
+	return method, nil
+}
+
 type RefundReason string
 
 const (

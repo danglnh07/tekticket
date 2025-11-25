@@ -380,11 +380,25 @@ func (server *Server) ConfirmPayment(ctx *gin.Context) {
 		return
 	}
 
+	// Get payment method type
+	methodType := "unknown"
+	method, err := payment.GetPaymentMethod(confirmIntent.PaymentMethod.ID)
+	if err != nil {
+		util.LOGGER.Warn("POST /api/payments/:id/confirm: failed to get payment method type, fall to default value", "error", err)
+	} else {
+		// To keep it simple, we'll only track for card type with detailed brand. For other type, we'll simply print there type
+		if method.Type == stripe.PaymentMethodTypeCard && method.Card != nil {
+			methodType = fmt.Sprintf("%s: %s", method.Type, method.Card.Brand)
+		} else {
+			methodType = string(method.Type)
+		}
+	}
+
 	// Update payment with payment method type and status = success
 	util.LOGGER.Info("POST /api/payments/:id/confirm", "payment_method", confirmIntent.PaymentMethod)
 	payload := worker.UpdatePaymentRecordPayload{
 		URL:     fmt.Sprintf("%s/items/payments/%s", server.config.DirectusAddr, paymentID),
-		Body:    map[string]any{"payment_method": "visa", "status": "success"},
+		Body:    map[string]any{"payment_method": methodType, "status": "success"},
 		Token:   token,
 		Caller:  "POST /api/payments/:id/confirm",
 		Context: "update payment with payment_method and status after payment confirmation success",

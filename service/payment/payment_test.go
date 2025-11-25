@@ -172,3 +172,28 @@ func TestHandlePaymentError(t *testing.T) {
 	// Try printing message
 	util.LOGGER.Info("Error message", "method", "tok_visa_chargeDeclined", "msg", err.(*stripe.Error).Msg)
 }
+
+// Test get payment method
+func TestGetPaymentMethodType(t *testing.T) {
+	// Create payment method
+	visa, err := CreatePaymentMethodFromToken("tok_visa")
+	require.NoError(t, err)
+	mastercard, err := CreatePaymentMethodFromToken("tok_mastercard")
+	require.NoError(t, err)
+
+	// Get payment method type
+	visaResult, err := GetPaymentMethod(visa.ID)
+	require.NoError(t, err)
+	mastercardResult, err := GetPaymentMethod(mastercard.ID)
+	require.NoError(t, err)
+
+	// Compare
+	require.Equal(t, stripe.PaymentMethodTypeCard, visaResult.Type)
+	require.Equal(t, stripe.PaymentMethodTypeCard, mastercardResult.Type)
+
+	require.NotNil(t, visaResult.Card)
+	require.NotNil(t, mastercardResult.Card)
+
+	require.Equal(t, stripe.PaymentMethodCardBrandVisa, visaResult.Card.Brand)
+	require.Equal(t, stripe.PaymentMethodCardBrandMastercard, mastercardResult.Card.Brand)
+}
